@@ -6,26 +6,26 @@ interface Fields {
   field: string;
 }
 let bracketTest1: Fields;
-bracketTest1['field'];  // should error
+console.log(bracketTest1['field']);  // should error
 
 interface FieldsIndexable {
   field: string;
   [key: string]: string;
 }
 let bracketTest2: FieldsIndexable;
-bracketTest2['field'];  // is ok, object is indexable
+console.log(bracketTest2['field']);  // is ok, object is indexable
 
 class FieldsClass {
   field: string;
 }
 let bracketTest3: FieldsClass;
-bracketTest3['field'];  // should error
+console.log(bracketTest3['field']);  // should error
 
-((): Fields => null)()['field'];  // should error
+console.log(((): Fields => null)()['field']);  // should error
 
 let bracketTestArray: number[];
 let bracketTestArray2: Array<number>;
-bracketTestArray[1];  // ensure we didn't accidentally break arrays
-bracketTestArray2[1];
+console.log(bracketTestArray[1]);  // ensure we didn't accidentally break arrays
+console.log(bracketTestArray2[1]);
 let bracketTestMap: {[key: string]: number};
-bracketTestMap['a'];  // ensure we didn't accidentally break maps
+console.log(bracketTestMap['a']);  // ensure we didn't accidentally break maps

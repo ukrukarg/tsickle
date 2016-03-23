@@ -2,9 +2,9 @@
 // by string name, e.g. foo['bar'], is disallowed by sickle
 // because it breaks in the presence of Closure renaming.
 let /** Fields */ bracketTest1;
-bracketTest1['field']; // should error
+console.log(bracketTest1['field']); // should error
 let /** FieldsIndexable */ bracketTest2;
-bracketTest2['field']; // is ok, object is indexable
+console.log(bracketTest2['field']); // is ok, object is indexable
 class FieldsClass {
     static _sickle_typeAnnotationsHelper() {
         /** @type {string} */
@@ -12,18 +12,18 @@ class FieldsClass {
     }
 }
 let /** FieldsClass */ bracketTest3;
-bracketTest3['field']; // should error
-(
+console.log(bracketTest3['field']); // should error
+console.log((
 /**
  * @return {Fields}
  */
 /**
  * @return {Fields}
  */
-    () => null)()['field']; // should error
+    () => null)()['field']); // should error
 let /** Array<number> */ bracketTestArray;
 let /** Array<number> */ bracketTestArray2;
-bracketTestArray[1]; // ensure we didn't accidentally break arrays
-bracketTestArray2[1];
+console.log(bracketTestArray[1]); // ensure we didn't accidentally break arrays
+console.log(bracketTestArray2[1]);
 let /** Object<string,number> */ bracketTestMap;
-bracketTestMap['a']; // ensure we didn't accidentally break maps
+console.log(bracketTestMap['a']); // ensure we didn't accidentally break maps
