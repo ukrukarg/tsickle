@@ -60,7 +60,9 @@ describe('golden tests', () => {
       it.skip(test.name);
       return;
     }
-    let options: SickleOptions = {};
+    let options: SickleOptions = {
+      checkUnsafeStringAccesses: true,
+    };
     if (/\.untyped\b/.test(test.name)) {
       options.untyped = true;
     }
