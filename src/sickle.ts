@@ -720,8 +720,35 @@ class Annotator {
         }
         return;
       case ts.SyntaxKind.TypeLiteral:
-        // Anonymous symbol, e.g. {a:number, b:string}.
+        // Anonymous type literal, e.g. {a:number, b:string}.
         let typeLiteral = <ts.TypeLiteralNode>node;
+
+        // First check whether it's indexable (e.g. {[key:string]:number}.
+        // In that case we want to emit Object<string, number>.
+        let indexSig: ts.IndexSignatureDeclaration = null;
+        for (let member of typeLiteral.members) {
+          if (member.kind == ts.SyntaxKind.IndexSignature) {
+            indexSig = <ts.IndexSignatureDeclaration>member;
+            break;
+          }
+        }
+        if (indexSig) {
+          this.emit('Object<');
+          if (indexSig.parameters.length != 1) {
+            this.error(
+                indexSig,
+                `index signature expected 1 parameters, got ${indexSig.parameters.length}`);
+            this.emit('?');
+          } else {
+            this.emitClosureType(indexSig.parameters[0].type);
+          }
+          this.emit(',');
+          this.emitClosureType(indexSig.type);
+          this.emit('>');
+          return;
+        }
+
+        // Otherwise, emit {a:string, b:number}, etc.
         this.emit('{');
         let first = true;
         for (let member of typeLiteral.members) {
@@ -736,7 +763,6 @@ class Annotator {
             this.emit(': ');
             this.emitClosureType(prop.type);
           } else {
-            // TODO: are there other member types?
             this.errorUnimplementedKind(member, 'type literal member');
           }
         }
