@@ -9,15 +9,15 @@ Error at test_files/bracket_properties.in.ts:24:1: indexing an object is unsafe 
 interface Fields {
   field: string;
 }
-let /** Fields */ x: Fields;
-x['field'];  // should error
+let /** Fields */ bracketTest1: Fields;
+bracketTest1['field'];  // should error
 
 interface FieldsIndexable {
   field: string;
   [key: string]: string;
 }
-let /** FieldsIndexable */ x2: FieldsIndexable;
-x2['field'];  // is ok, object is indexable
+let /** FieldsIndexable */ bracketTest2: FieldsIndexable;
+bracketTest2['field'];  // is ok, object is indexable
 
 class FieldsClass {
   field: string;
@@ -28,8 +28,8 @@ class FieldsClass {
   }
 
 }
-let /** FieldsClass */ x3: FieldsClass;
-x3['field'];  // should error
+let /** FieldsClass */ bracketTest3: FieldsClass;
+bracketTest3['field'];  // should error
 
 (
 /**

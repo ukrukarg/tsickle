@@ -5,21 +5,21 @@
 interface Fields {
   field: string;
 }
-let x: Fields;
-x['field'];  // should error
+let bracketTest1: Fields;
+bracketTest1['field'];  // should error
 
 interface FieldsIndexable {
   field: string;
   [key: string]: string;
 }
-let x2: FieldsIndexable;
-x2['field'];  // is ok, object is indexable
+let bracketTest2: FieldsIndexable;
+bracketTest2['field'];  // is ok, object is indexable
 
 class FieldsClass {
   field: string;
 }
-let x3: FieldsClass;
-x3['field'];  // should error
+let bracketTest3: FieldsClass;
+bracketTest3['field'];  // should error
 
 ((): Fields => null)()['field'];  // should error
 
