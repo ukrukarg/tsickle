@@ -4,6 +4,10 @@ export interface SickleOptions {
   // If true, convert every type to the Closure {?} type, which means
   // "don't check types".
   untyped?: boolean;
+  // If true, error on any string-based access to values, e.g.
+  //   foo['bar']
+  // (unless of course the object is indexable).
+  checkUnsafeStringAccesses?: boolean;
 }
 
 export interface SickleOutput {
@@ -288,14 +292,16 @@ class Annotator {
           this.emit(')');
           break;
         case ts.SyntaxKind.ElementAccessExpression:
-          let elemAccess = <ts.ElementAccessExpression>node;
-          let typeChecker = this.program.getTypeChecker();
-          let type = typeChecker.getTypeAtLocation(elemAccess.expression);
-          if (!typeChecker.getIndexTypeOfType(type, ts.IndexKind.String) &&
-              !typeChecker.getIndexTypeOfType(type, ts.IndexKind.Number)) {
-            this.error(
-                elemAccess.expression,
-                'indexing an object is unsafe in the presence of Closure renaming');
+          if (this.options.checkUnsafeStringAccesses) {
+            let elemAccess = <ts.ElementAccessExpression>node;
+            let typeChecker = this.program.getTypeChecker();
+            let type = typeChecker.getTypeAtLocation(elemAccess.expression);
+            if (!typeChecker.getIndexTypeOfType(type, ts.IndexKind.String) &&
+                !typeChecker.getIndexTypeOfType(type, ts.IndexKind.Number)) {
+              this.error(
+                  elemAccess.expression,
+                  'indexing an object is unsafe in the presence of Closure renaming');
+            }
           }
           this.writeNode(node);
           break;
