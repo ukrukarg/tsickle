@@ -727,7 +727,7 @@ class Annotator {
         // In that case we want to emit Object<string, number>.
         let indexSig: ts.IndexSignatureDeclaration = null;
         for (let member of typeLiteral.members) {
-          if (member.kind == ts.SyntaxKind.IndexSignature) {
+          if (member.kind === ts.SyntaxKind.IndexSignature) {
             indexSig = <ts.IndexSignatureDeclaration>member;
             break;
           }
@@ -757,7 +757,7 @@ class Annotator {
           } else {
             this.emit(', ');
           }
-          if (member.kind == ts.SyntaxKind.PropertySignature) {
+          if (member.kind === ts.SyntaxKind.PropertySignature) {
             let prop = <ts.PropertySignature>member;
             this.emit(prop.name.getText());
             this.emit(': ');
