@@ -740,25 +740,49 @@ class Annotator {
       case ts.SyntaxKind.TypeLiteral:
         // Anonymous symbol, e.g. {a:number, b:string}.
         let typeLiteral = <ts.TypeLiteralNode>node;
-        this.emit('{');
-        let first = true;
+        // First check whether it's indexable (e.g. {[key:string]:number}.
+        // In that case we want to emit Object<string, number>.
+        let indexSig: ts.IndexSignatureDeclaration = null;
         for (let member of typeLiteral.members) {
-          if (first) {
-            first = false;
-          } else {
-            this.emit(', ');
-          }
-          if (member.kind == ts.SyntaxKind.PropertySignature) {
-            let prop = <ts.PropertySignature>member;
-            this.emit(prop.name.getText());
-            this.emit(': ');
-            this.emitClosureType(prop.type);
-          } else {
-            // TODO: are there other member types?
-            this.errorUnimplementedKind(member, 'type literal member');
+          if (member.kind == ts.SyntaxKind.IndexSignature) {
+            indexSig = <ts.IndexSignatureDeclaration>member;
+            break;
           }
         }
-        this.emit('}');
+
+        if (indexSig) {
+          this.emit('Object<');
+          if (indexSig.parameters.length != 1) {
+            this.error(
+                indexSig,
+                `index signature expected 1 parameters, got ${indexSig.parameters.length}`);
+            this.emit('?');
+          } else {
+            this.emitClosureType(indexSig.parameters[0].type);
+          }
+          this.emit(',');
+          this.emitClosureType(indexSig.type);
+          this.emit('>');
+        } else {
+          this.emit('{');
+          let first = true;
+          for (let member of typeLiteral.members) {
+            if (first) {
+              first = false;
+            } else {
+              this.emit(', ');
+            }
+            if (member.kind == ts.SyntaxKind.PropertySignature) {
+              let prop = <ts.PropertySignature>member;
+              this.emit(prop.name.getText());
+              this.emit(': ');
+              this.emitClosureType(prop.type);
+            } else {
+              this.errorUnimplementedKind(member, 'type literal member');
+            }
+          }
+          this.emit('}');
+        }
         return;
       case ts.SyntaxKind.ArrayType:
         let arrayType = <ts.ArrayTypeNode>node;

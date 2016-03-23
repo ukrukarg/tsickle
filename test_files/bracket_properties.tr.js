@@ -25,5 +25,5 @@ let /** Array<number> */ bracketTestArray;
 let /** Array<number> */ bracketTestArray2;
 bracketTestArray[1]; // ensure we didn't accidentally break arrays
 bracketTestArray2[1];
-let /** {} */ bracketTestMap;
+let /** Object<string,number> */ bracketTestMap;
 bracketTestMap['a']; // ensure we didn't accidentally break maps
