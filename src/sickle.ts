@@ -18,7 +18,6 @@ export interface SickleOutput {
 /** The compiler options used by the test suite and sickle command line. */
 export const compilerOptions: ts.CompilerOptions = {
   target: ts.ScriptTarget.ES6,
-  noImplicitAny: true,
   skipDefaultLibCheck: true,
   noEmitOnError: true,
   experimentalDecorators: true,
@@ -287,6 +286,18 @@ class Annotator {
           this.emit('(');
           this.writeNode(node);
           this.emit(')');
+          break;
+        case ts.SyntaxKind.ElementAccessExpression:
+          let elemAccess = <ts.ElementAccessExpression>node;
+          let typeChecker = this.program.getTypeChecker();
+          let type = typeChecker.getTypeAtLocation(elemAccess.expression);
+          if (!typeChecker.getIndexTypeOfType(type, ts.IndexKind.String) &&
+              !typeChecker.getIndexTypeOfType(type, ts.IndexKind.Number)) {
+            this.error(
+                elemAccess.expression,
+                'indexing an object is unsafe in the presence of Closure renaming');
+          }
+          this.writeNode(node);
           break;
         default:
           this.writeNode(node);
