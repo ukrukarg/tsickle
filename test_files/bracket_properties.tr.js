@@ -12,7 +12,7 @@ class FieldsClass {
     }
 }
 let /** FieldsClass */ x3;
-x3['field']; // should error  
+x3['field']; // should error
 (
 /**
  * @return { Fields}

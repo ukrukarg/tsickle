@@ -19,7 +19,7 @@ class FieldsClass {
   field: string;
 }
 let x3: FieldsClass;
-x3['field'];  // should error  
+x3['field'];  // should error
 
 ((): Fields => null)()['field'];  // should error
 
