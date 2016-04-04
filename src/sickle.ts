@@ -195,7 +195,7 @@ class Annotator {
       this.writeRange(node.getFullStart(), node.getEnd());
       return true;
     }
-    
+
     switch (node.kind) {
       case ts.SyntaxKind.ExportDeclaration:
         let exportDecl = <ts.ExportDeclaration>node;
@@ -298,7 +298,7 @@ class Annotator {
         this.writeNode(node);
         this.emit('))');
         return true;
-    case ts.SyntaxKind.ElementAccessExpression:
+      case ts.SyntaxKind.ElementAccessExpression:
         if (this.options.checkUnsafeStringAccesses) {
           let elemAccess = <ts.ElementAccessExpression>node;
           let typeChecker = this.program.getTypeChecker();
@@ -310,8 +310,8 @@ class Annotator {
                 'indexing an object is unsafe in the presence of Closure renaming');
           }
         }
-    this.writeNode(node);
-    return true;
+        this.writeNode(node);
+        return true;
     }
     return false;
   }
@@ -747,6 +747,7 @@ class Annotator {
           } else {
             keyType = this.typeToClosure(indexSig.parameters[0].type);
           }
+          let valType = this.typeToClosure(indexSig.type);
           return `Object<${keyType},${valType}>`;
         }
 

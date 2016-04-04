@@ -9,14 +9,14 @@ Error at test_files/bracket_properties.in.ts:24:13: indexing an object is unsafe
 interface Fields {
   field: string;
 }
-let /** Fields */ bracketTest1: Fields;
+let /** @type {Fields} */ bracketTest1: Fields;
 console.log(bracketTest1['field']);  // should error
 
 interface FieldsIndexable {
   field: string;
   [key: string]: string;
 }
-let /** FieldsIndexable */ bracketTest2: FieldsIndexable;
+let /** @type {FieldsIndexable} */ bracketTest2: FieldsIndexable;
 console.log(bracketTest2['field']);  // is ok, object is indexable
 
 class FieldsClass {
@@ -28,7 +28,7 @@ class FieldsClass {
   }
 
 }
-let /** FieldsClass */ bracketTest3: FieldsClass;
+let /** @type {FieldsClass} */ bracketTest3: FieldsClass;
 console.log(bracketTest3['field']);  // should error
 
 console.log((
@@ -37,9 +37,9 @@ console.log((
  */
 (): Fields => null)()['field']);  // should error
 
-let /** Array<number> */ bracketTestArray: number[];
-let /** Array<number> */ bracketTestArray2: Array<number>;
+let /** @type {Array<number>} */ bracketTestArray: number[];
+let /** @type {Array<number>} */ bracketTestArray2: Array<number>;
 console.log(bracketTestArray[1]);  // ensure we didn't accidentally break arrays
 console.log(bracketTestArray2[1]);
-let /** Object<string,number> */ bracketTestMap: {[key: string]: number};
+let /** @type {Object<string,number>} */ bracketTestMap: {[key: string]: number};
 console.log(bracketTestMap['a']);  // ensure we didn't accidentally break maps
