@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as ts from 'typescript';
 import {expect} from 'chai';
 
-import {SickleOptions, getJSDocAnnotation, formatDiagnostics} from '../src/sickle';
+import * as sickle from '../src/sickle';
 import {annotateSource, transformSource, goldenTests} from './test_support';
 
 let RUN_TESTS_MATCHING: RegExp = null;
@@ -60,7 +60,7 @@ describe('golden tests', () => {
       it.skip(test.name);
       return;
     }
-    let options: SickleOptions = {
+    let options: sickle.Options = {
       checkUnsafeStringAccesses: true,
     };
     if (/\.untyped\b/.test(test.name)) {
@@ -82,7 +82,7 @@ describe('golden tests', () => {
           let fileName = diag.file.fileName;
           diag.file.fileName = fileName.substr(fileName.indexOf('test_files'));
         }
-        fileOutput = formatDiagnostics(diagnostics) + '\n====\n' + output;
+        fileOutput = sickle.formatDiagnostics(diagnostics) + '\n====\n' + output;
       }
       compareAgainstGolden(fileOutput, test.sicklePath);
       compareAgainstGolden(externs, test.externsPath);
@@ -98,11 +98,11 @@ describe('golden tests', () => {
 describe('getJSDocAnnotation', () => {
   it('does not get non-jsdoc values', () => {
     let source = '/* ordinary comment */';
-    expect(getJSDocAnnotation(source)).to.equal(null);
+    expect(sickle.getJSDocAnnotation(source)).to.equal(null);
   });
   it('grabs plain text from jsdoc', () => {
     let source = '/** jsdoc comment */';
-    expect(getJSDocAnnotation(source)).to.deep.equal({tags: [{text: 'jsdoc comment'}]});
+    expect(sickle.getJSDocAnnotation(source)).to.deep.equal({tags: [{text: 'jsdoc comment'}]});
   });
   it('gathers @tags from jsdoc', () => {
     let source = `/**
@@ -112,7 +112,7 @@ describe('getJSDocAnnotation', () => {
   * @return foobar
   * @nosideeffects
   */`;
-    expect(getJSDocAnnotation(source)).to.deep.equal({
+    expect(sickle.getJSDocAnnotation(source)).to.deep.equal({
       tags: [
         {tagName: 'param', parameterName: 'foo'},
         {tagName: 'param', parameterName: 'bar', text: 'multiple line comment'},
@@ -125,15 +125,108 @@ describe('getJSDocAnnotation', () => {
     let source = `/**
   * @param {string} foo
 */`;
-    expect(() => getJSDocAnnotation(source)).to.throw(Error);
+    expect(() => sickle.getJSDocAnnotation(source)).to.throw(Error);
   });
   it('rejects @type annotations', () => {
     let source = `/** @type {string} foo */`;
-    expect(() => getJSDocAnnotation(source)).to.throw(Error);
+    expect(() => sickle.getJSDocAnnotation(source)).to.throw(Error);
   });
   it('allows @suppress annotations', () => {
     let source = `/** @suppress {checkTypes} I hate types */`;
-    expect(getJSDocAnnotation(source))
+    expect(sickle.getJSDocAnnotation(source))
         .to.deep.equal({tags: [{tagName: 'suppress', text: '{checkTypes} I hate types'}]})
+  });
+});
+
+describe('convertCommonJsToGoogModule', () => {
+  function pathToModuleName(context: string, fileName: string) {
+    if (fileName[0] === '.') {
+      fileName = path.join(path.dirname(context), fileName);
+    }
+    return fileName.replace(/\//g, '$');
+  }
+
+  function expectCommonJs(fileName: string, content: string) {
+    fileName = fileName.substring(0, fileName.lastIndexOf('.'));
+    return expect(sickle.convertCommonJsToGoogModule(fileName, content, pathToModuleName).output);
+  }
+
+  it('adds a goog.module call', () => {
+    // NB: no line break added below.
+    expectCommonJs('a.js', `console.log('hello');`)
+        .to.equal(`goog.module('a');console.log('hello');`);
+  });
+
+  it('strips use strict directives', () => {
+    // NB: no line break added below.
+    expectCommonJs('a.js', `"use strict";
+console.log('hello');`)
+        .to.equal(`goog.module('a');
+console.log('hello');`);
+  });
+
+  it('converts require calls', () => {
+    expectCommonJs('a.js', `var r = require('req/mod');`)
+        .to.equal(`goog.module('a');var r = goog.require('req$mod');`);
+  });
+
+  it('converts require calls without assignments on first line', () => {
+    expectCommonJs('a.js', `require('req/mod');`)
+        .to.equal(`goog.module('a');var unused_0_ = goog.require('req$mod');`);
+  });
+
+  it('converts require calls without assignments on a new line', () => {
+    expectCommonJs('a.js', `
+require('req/mod');`)
+        .to.equal(`goog.module('a');
+var unused_0_ = goog.require('req$mod');`);
+  });
+
+  it('converts require calls without assignments after comments', () => {
+    expectCommonJs('a.js', `
+// Comment
+require('req/mod');`)
+        .to.equal(`goog.module('a');
+// Comment
+var unused_0_ = goog.require('req$mod');`);
+  });
+
+  it('resolves relative module URIs', () => {
+    // See below for more fine-grained unit tests.
+    expectCommonJs('a/b.js', `var r = require('./req/mod');`)
+        .to.equal(`goog.module('a$b');var r = goog.require('a$req$mod');`);
+  });
+
+  it('resolves default goog: module imports', () => {
+    expectCommonJs('a/b.js', `
+var goog_use_Foo_1 = require('goog:use.Foo');
+console.log(goog_use_Foo_1.default);`)
+        .to.equal(`goog.module('a$b');
+var goog_use_Foo_1 = goog.require('use.Foo');
+console.log(goog_use_Foo_1        );`);
+    // NB: the whitespace above matches the .default part, so that
+    // source maps are not impacted.
+  });
+
+  it('leaves single .default accesses alone', () => {
+    // This is a repro for a bug when no goog: symbols are found.
+    expectCommonJs('a/b.js', `
+console.log(this.default);`)
+        .to.equal(`goog.module('a$b');
+console.log(this.default);`);
+  });
+
+  it('inserts the module after "use strict"', () => {
+    expectCommonJs('a/b.js', `/**
+* docstring here
+*/
+"use strict";
+var foo = bar;
+`).to.equal(`goog.module('a$b');/**
+* docstring here
+*/
+
+var foo = bar;
+`);
   });
 });

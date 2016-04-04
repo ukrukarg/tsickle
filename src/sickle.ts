@@ -1,6 +1,6 @@
 import * as ts from 'typescript';
 
-export interface SickleOptions {
+export interface Options {
   // If true, convert every type to the Closure {?} type, which means
   // "don't check types".
   untyped?: boolean;
@@ -10,7 +10,7 @@ export interface SickleOptions {
   checkUnsafeStringAccesses?: boolean;
 }
 
-export interface SickleOutput {
+export interface Output {
   // The TypeScript source with Closure annotations inserted.
   output: string;
   // Generated externs declarations, if any.
@@ -18,15 +18,6 @@ export interface SickleOutput {
   // Error messages, if any.
   diagnostics: ts.Diagnostic[];
 }
-
-/** The compiler options used by the test suite and sickle command line. */
-export const compilerOptions: ts.CompilerOptions = {
-  target: ts.ScriptTarget.ES6,
-  skipDefaultLibCheck: true,
-  noEmitOnError: true,
-  experimentalDecorators: true,
-  emitDecoratorMetadata: true,
-};
 
 /**
  * Symbols that are already declared as externs in Closure, that should
@@ -73,6 +64,10 @@ export interface JSDocTag {
   optional?: boolean;
   // restParam is true for "...x: foo[]" function parameters.
   restParam?: boolean;
+  // notNull is true for binding parameters, which require require
+  // non-null arguments on the Closure side.  Can likely remove this
+  // once TypeScript nullable types are available.
+  notNull?: boolean;
   text?: string;
 }
 
@@ -156,12 +151,13 @@ class Annotator {
   /** The node currently being visited by visit(). This is only used in error messages. */
   private currentNode: ts.Node;
 
-  constructor(
-      private program: ts.Program, private file: ts.SourceFile, private options: SickleOptions) {}
+  constructor(private program: ts.Program, private file: ts.SourceFile, private options: Options) {}
 
-  annotate(): SickleOutput {
+  annotate(): Output {
     this.visit(this.file);
-    this.assert(this.indent == 0, 'visit() failed to track nesting');
+    if (this.indent != 0) {
+      throw new Error('visit() failed to track nesting');
+    }
     return {
       output: this.tsOutput.join(''),
       externs: this.externsOutput.length > 0 ? '/** @externs */\n' + this.externsOutput.join('') :
@@ -181,137 +177,143 @@ class Annotator {
     this.currentNode = node;
     // this.logWithIndent('node: ' + ts.SyntaxKind[node.kind]);
     this.indent++;
+    if (!this.maybeProcess(node)) this.writeNode(node);
+    this.indent--;
+  }
 
+  /**
+   * Examines a ts.Node and decides whether to do special processing of it for output.
+   *
+   * @return True if the ts.Node has been handled, false if we should
+   *     emit it as is and visit its children.
+   */
+  private maybeProcess(node: ts.Node): boolean {
     if (node.flags & ts.NodeFlags.Ambient) {
       this.visitExterns(node);
       // An ambient declaration declares types for TypeScript's benefit, so we want to skip Sickle
       // conversion of its contents.
       this.writeRange(node.getFullStart(), node.getEnd());
-    } else {
-      switch (node.kind) {
-        case ts.SyntaxKind.ExportDeclaration:
-          let exportDecl = <ts.ExportDeclaration>node;
-          if (!exportDecl.exportClause && exportDecl.moduleSpecifier) {
-            // It's an "export * from ..." statement.
-            // Rewrite it to re-export each exported symbol directly.
-            let exports = this.expandSymbolsFromExportStar(exportDecl);
-            this.writeRange(exportDecl.getFullStart(), exportDecl.getStart());
-            this.emit(`export {${exports.join(',')}} from`);
-            this.writeRange(exportDecl.moduleSpecifier.getFullStart(), node.getEnd());
-          } else {
-            this.writeNode(node);
-          }
-          break;
-        case ts.SyntaxKind.InterfaceDeclaration:
-          let decl = <ts.InterfaceDeclaration>node;
-          this.writeRange(node.getFullStart(), node.getEnd());
-          break;
-        case ts.SyntaxKind.VariableDeclaration:
-          this.maybeEmitJSDocType((<ts.VariableDeclaration>node).type);
-          this.writeNode(node);
-          break;
-        case ts.SyntaxKind.ClassDeclaration:
-          let classNode = <ts.ClassDeclaration>node;
-          if (classNode.members.length > 0) {
-            // We must visit all members individually, to strip out any
-            // /** @export */ annotations that show up in the constructor
-            // and to annotate methods.
-            this.writeTextBetween(classNode, classNode.members[0]);
-            for (let member of classNode.members) {
-              this.visit(member);
-            }
-          } else {
-            this.writeTextBetween(classNode, classNode.getLastToken());
-          }
-          this.emitTypeAnnotationsHelper(classNode);
-          this.writeNode(classNode.getLastToken());
-          break;
-        case ts.SyntaxKind.PublicKeyword:
-        case ts.SyntaxKind.PrivateKeyword:
-          // The "public"/"private" keywords are encountered in two places:
-          // 1) In class fields (which don't appear in the transformed output).
-          // 2) In "parameter properties", e.g.
-          //      constructor(/** @export */ public foo: string).
-          // In case 2 it's important to not emit that JSDoc in the generated
-          // constructor, as this is illegal for Closure.  It's safe to just
-          // always skip comments preceding the 'public' keyword.
-          // See test_files/parameter_properties.ts.
-          this.writeNode(node, /* skipComments */ true);
-          break;
-        case ts.SyntaxKind.Constructor:
-          let ctor = <ts.ConstructorDeclaration>node;
-          this.emitFunctionType(ctor);
-          // Write the "constructor(...) {" bit, but iterate through any
-          // parameters if given so that we can examine them more closely.
-          let offset = ctor.getStart();
-          if (ctor.parameters.length) {
-            for (let param of ctor.parameters) {
-              this.writeTextFromOffset(offset, param);
-              this.visit(param);
-              offset = param.getEnd();
-            }
-          }
-          this.writeRange(offset, node.getEnd());
-          break;
-        case ts.SyntaxKind.ArrowFunction:
-          if (this.options.untyped) {
-            // In untyped mode, don't emit any type before the arrow function.
-            // Works around issue #57.
-            this.writeNode(node);
-            break;
-          }
-        // Otherwise, fall through to the shared processing for function.
-        case ts.SyntaxKind.FunctionDeclaration:
-        case ts.SyntaxKind.MethodDeclaration:
-          let fnDecl = <ts.FunctionLikeDeclaration>node;
-
-          if (!fnDecl.body) {
-            // Functions are allowed to not have bodies in the presence
-            // of overloads.  It's not clear how to translate these overloads
-            // into Closure types, so skip them for now.
-            this.writeNode(node);
-            break;
-          }
-
-          this.emitFunctionType(fnDecl);
-          this.writeTextFromOffset(fnDecl.getStart(), fnDecl.body);
-          this.visit(fnDecl.body);
-          break;
-        case ts.SyntaxKind.TypeAliasDeclaration:
-          this.visitTypeAlias(<ts.TypeAliasDeclaration>node);
-          this.writeNode(node);
-          break;
-        case ts.SyntaxKind.EnumDeclaration:
-          this.visitEnum(<ts.EnumDeclaration>node);
-          break;
-        case ts.SyntaxKind.TypeAssertionExpression:
-          let typeAssertion = <ts.TypeAssertion>node;
-          this.maybeEmitJSDocType(typeAssertion.type);
-          this.emit('(');
-          this.writeNode(node);
-          this.emit(')');
-          break;
-        case ts.SyntaxKind.ElementAccessExpression:
-          if (this.options.checkUnsafeStringAccesses) {
-            let elemAccess = <ts.ElementAccessExpression>node;
-            let typeChecker = this.program.getTypeChecker();
-            let type = typeChecker.getTypeAtLocation(elemAccess.expression);
-            if (!typeChecker.getIndexTypeOfType(type, ts.IndexKind.String) &&
-                !typeChecker.getIndexTypeOfType(type, ts.IndexKind.Number)) {
-              this.error(
-                  elemAccess.expression,
-                  'indexing an object is unsafe in the presence of Closure renaming');
-            }
-          }
-          this.writeNode(node);
-          break;
-        default:
-          this.writeNode(node);
-          break;
-      }
+      return true;
     }
+    
+    switch (node.kind) {
+      case ts.SyntaxKind.ExportDeclaration:
+        let exportDecl = <ts.ExportDeclaration>node;
+        if (!exportDecl.exportClause && exportDecl.moduleSpecifier) {
+          // It's an "export * from ..." statement.
+          // Rewrite it to re-export each exported symbol directly.
+          let exports = this.expandSymbolsFromExportStar(exportDecl);
+          this.writeRange(exportDecl.getFullStart(), exportDecl.getStart());
+          this.emit(`export {${exports.join(',')}} from`);
+          this.writeRange(exportDecl.moduleSpecifier.getFullStart(), node.getEnd());
+          return true;
+        }
+        return false;
+      case ts.SyntaxKind.InterfaceDeclaration:
+        let decl = <ts.InterfaceDeclaration>node;
+        this.writeRange(node.getFullStart(), node.getEnd());
+        return true;
+      case ts.SyntaxKind.VariableDeclaration:
+        this.maybeEmitJSDocType((<ts.VariableDeclaration>node).type);
+        return false;
+      case ts.SyntaxKind.ClassDeclaration:
+        let classNode = <ts.ClassDeclaration>node;
+        if (classNode.members.length > 0) {
+          // We must visit all members individually, to strip out any
+          // /** @export */ annotations that show up in the constructor
+          // and to annotate methods.
+          this.writeRange(classNode.getFullStart(), classNode.members[0].getFullStart());
+          for (let member of classNode.members) {
+            this.visit(member);
+          }
+        } else {
+          this.writeRange(classNode.getFullStart(), classNode.getLastToken().getFullStart());
+        }
+        this.emitTypeAnnotationsHelper(classNode);
+        this.writeNode(classNode.getLastToken());
+        return true;
+      case ts.SyntaxKind.PublicKeyword:
+      case ts.SyntaxKind.PrivateKeyword:
+        // The "public"/"private" keywords are encountered in two places:
+        // 1) In class fields (which don't appear in the transformed output).
+        // 2) In "parameter properties", e.g.
+        //      constructor(/** @export */ public foo: string).
+        // In case 2 it's important to not emit that JSDoc in the generated
+        // constructor, as this is illegal for Closure.  It's safe to just
+        // always skip comments preceding the 'public' keyword.
+        // See test_files/parameter_properties.ts.
+        this.writeNode(node, /* skipComments */ true);
+        return true;
+      case ts.SyntaxKind.Constructor:
+        let ctor = <ts.ConstructorDeclaration>node;
+        this.emitFunctionType(ctor);
+        // Write the "constructor(...) {" bit, but iterate through any
+        // parameters if given so that we can examine them more closely.
+        let offset = ctor.getStart();
+        if (ctor.parameters.length) {
+          for (let param of ctor.parameters) {
+            this.writeRange(offset, param.getFullStart());
+            this.visit(param);
+            offset = param.getEnd();
+          }
+        }
+        this.writeRange(offset, node.getEnd());
+        return true;
+      case ts.SyntaxKind.ArrowFunction:
+        if (this.options.untyped) {
+          // In untyped mode, don't emit any type before the arrow function.
+          // Works around issue #57.
+          return false;
+        }
+      // Otherwise, fall through to the shared processing for function.
+      case ts.SyntaxKind.FunctionDeclaration:
+      case ts.SyntaxKind.MethodDeclaration:
+        let fnDecl = <ts.FunctionLikeDeclaration>node;
 
-    this.indent--;
+        if (!fnDecl.body) {
+          // Functions are allowed to not have bodies in the presence
+          // of overloads.  It's not clear how to translate these overloads
+          // into Closure types, so skip them for now.
+          return false;
+        }
+
+        this.emitFunctionType(fnDecl);
+        this.writeRange(fnDecl.getStart(), fnDecl.body.getFullStart());
+        this.visit(fnDecl.body);
+        return true;
+      case ts.SyntaxKind.TypeAliasDeclaration:
+        this.visitTypeAlias(<ts.TypeAliasDeclaration>node);
+        this.writeNode(node);
+        return true;
+      case ts.SyntaxKind.EnumDeclaration:
+        this.visitEnum(<ts.EnumDeclaration>node);
+        return true;
+      case ts.SyntaxKind.TypeAssertionExpression:
+        let typeAssertion = <ts.TypeAssertion>node;
+        this.maybeEmitJSDocType(typeAssertion.type);
+        // When TypeScript emits JS, it removes one layer of "redundant"
+        // parens, but we need them for the Closure type assertion.  Work
+        // around this by using two parens.  See test_files/coerce.*.
+        this.emit('((');
+        this.writeNode(node);
+        this.emit('))');
+        return true;
+    case ts.SyntaxKind.ElementAccessExpression:
+        if (this.options.checkUnsafeStringAccesses) {
+          let elemAccess = <ts.ElementAccessExpression>node;
+          let typeChecker = this.program.getTypeChecker();
+          let type = typeChecker.getTypeAtLocation(elemAccess.expression);
+          if (!typeChecker.getIndexTypeOfType(type, ts.IndexKind.String) &&
+              !typeChecker.getIndexTypeOfType(type, ts.IndexKind.Number)) {
+            this.error(
+                elemAccess.expression,
+                'indexing an object is unsafe in the presence of Closure renaming');
+          }
+        }
+    this.writeNode(node);
+    return true;
+    }
+    return false;
   }
 
   private expandSymbolsFromExportStar(exportDecl: ts.ExportDeclaration): string[] {
@@ -374,20 +376,32 @@ class Annotator {
 
     // Parameters.
     if (fnDecl.parameters.length) {
+      let paramIdx = 0;
       for (let param of fnDecl.parameters) {
         let newTag: JSDocTag = {
           tagName: 'param',
-          parameterName: param.name.getText(),
           type: param.type,
           optional: param.initializer != null || param.questionToken != null,
         };
-
-        // Search for this parameter in the JSDoc @params.
-        for (let { tagName, parameterName, text } of jsDoc.tags) {
-          if (tagName === 'param' && parameterName === newTag.parameterName) {
-            newTag.text = text;
+        switch (param.name.kind) {
+          case ts.SyntaxKind.ArrayBindingPattern:
+          case ts.SyntaxKind.ObjectBindingPattern:
+            // Produce unique names for synthetic parameter names.
+            newTag.parameterName = `param${paramIdx++}`;
+            newTag.notNull = true;
             break;
-          }
+          case ts.SyntaxKind.Identifier:
+            newTag.parameterName = (<ts.Identifier>param.name).text;
+            // Search for this parameter in the JSDoc @params.
+            for (let { tagName, parameterName, text } of jsDoc.tags) {
+              if (tagName === 'param' && parameterName === newTag.parameterName) {
+                newTag.text = text;
+                break;
+              }
+            }
+            break;
+          default:
+            this.errorUnimplementedKind(param.name, 'parameter name');
         }
 
         if (param.dotDotDotToken != null) {
@@ -405,8 +419,9 @@ class Annotator {
               newTag.type = arrayType.elementType;
             } else if (param.type.kind === ts.SyntaxKind.TypeReference) {
               let refType = <ts.TypeReferenceNode>param.type;
-              this.assert(
-                  refType.typeName.getText() == 'Array', 'expected array type for rest param');
+              if (refType.typeName.getText() != 'Array') {
+                this.error(refType, 'expected array type for rest param');
+              }
               newTag.type = refType.typeArguments[0];
             } else {
               this.error(param, 'expected array type for rest param');
@@ -437,15 +452,6 @@ class Annotator {
     // but it's needed to work around
     // https://github.com/Microsoft/TypeScript/issues/6982
     this.emit('\n/**\n');
-    // Produce unique names for synthetic parameter names
-    let paramIdx = 0;
-    const escapeParameterName = (name: string) => {
-      if (name.indexOf('{') >= 0 || name.indexOf('[') >= 0) {
-        return `param${paramIdx++}`;
-      }
-      return name;
-    };
-
     for (let tag of newDoc.tags) {
       this.emit(' * ');
       if (tag.tagName) {
@@ -456,14 +462,17 @@ class Annotator {
         if (tag.restParam) {
           this.emit('...');
         }
-        this.emitClosureType(tag.type);
+        if (tag.notNull && !this.options.untyped) {
+          this.emit('!');
+        }
+        this.emit(this.typeToClosure(tag.type));
         if (tag.optional) {
           this.emit('=');
         }
         this.emit('}');
       }
       if (tag.parameterName) {
-        this.emit(' ' + escapeParameterName(tag.parameterName));
+        this.emit(' ' + tag.parameterName);
       }
       if (tag.text) {
         this.emit(' ' + tag.text);
@@ -517,7 +526,7 @@ class Annotator {
         existingAnnotation += `${text}\n`;
       }
     }
-    this.maybeEmitJSDocType(p.type, existingAnnotation + '@type');
+    this.maybeEmitJSDocType(p.type, existingAnnotation);
     this.emit(`\n    ${className}.prototype.${p.name.getText()};\n`);
   }
 
@@ -636,7 +645,7 @@ class Annotator {
         case ts.SyntaxKind.PropertySignature:
         case ts.SyntaxKind.PropertyDeclaration:
           let prop = <ts.PropertySignature>member;
-          this.maybeEmitJSDocType(prop.type, '@type');
+          this.maybeEmitJSDocType(prop.type);
           this.emit(`\n${typeName}.prototype.${prop.name.getText()};\n`);
           break;
         case ts.SyntaxKind.MethodDeclaration:
@@ -663,7 +672,7 @@ class Annotator {
       let identifier = <ts.Identifier>decl.name;
       let qualifiedName = namespace.concat([identifier.text]).join('.');
       if (closureExternsBlacklist.indexOf(qualifiedName) >= 0) return;
-      this.maybeEmitJSDocType(decl.type, '@type');
+      this.maybeEmitJSDocType(decl.type);
       if (namespace.length > 0) {
         this.emit(`\n${qualifiedName};\n`);
       } else {
@@ -683,18 +692,13 @@ class Annotator {
     }
   }
 
-  private maybeEmitJSDocType(type: ts.TypeNode, jsDocTag?: string) {
+  private maybeEmitJSDocType(type: ts.TypeNode, additionalDocTag?: string) {
     if (!type && !this.options.untyped) return;
-    this.emit(' /** ');
-    if (jsDocTag) {
-      this.emit(jsDocTag);
-      this.emit(' {');
+    this.emit(' /**');
+    if (additionalDocTag) {
+      this.emit(' ' + additionalDocTag);
     }
-    this.emitClosureType(type);
-    if (jsDocTag) {
-      this.emit('}');
-    }
-    this.emit(' */');
+    this.emit(` @type {${this.typeToClosure(type)}} */`);
   }
 
   /**
@@ -703,110 +707,87 @@ class Annotator {
    * - any => ?
    * - foo[] => Array<foo>
    */
-  private emitClosureType(node: ts.TypeNode): void {
+  private typeToClosure(node: ts.TypeNode): string {
     if (this.options.untyped || !node) {
-      this.emit('?');
-      return;
+      return '?';
     }
 
     switch (node.kind) {
       case ts.SyntaxKind.AnyKeyword:
-        this.emit('?');
-        return;
+        return '?';
       case ts.SyntaxKind.BooleanKeyword:
       case ts.SyntaxKind.VoidKeyword:
       case ts.SyntaxKind.NumberKeyword:
       case ts.SyntaxKind.StringKeyword:
-        this.emit(node.getText());
-        return;
+        return node.getText();
       case ts.SyntaxKind.TypeReference:
         // This is e.g. "Object" or "Array<foo>".
         let typeRef = <ts.TypeReferenceNode>node;
-        this.emit(typeRef.typeName.getText());
+        let type = typeRef.typeName.getText();
         if (typeRef.typeArguments) {
-          this.emit('<');
-          let first = true;
-          for (let arg of typeRef.typeArguments) {
-            if (first) {
-              first = false;
-            } else {
-              this.emit(', ');
-            }
-            this.emitClosureType(arg);
-          }
-          this.emit('>');
+          let args = typeRef.typeArguments.map(t => this.typeToClosure(t)).join(',');
+          return `${type}<${args}>`;
         }
-        return;
+        return type;
       case ts.SyntaxKind.TypeLiteral:
         // Anonymous type literal, e.g. {a:number, b:string}.
         let typeLiteral = <ts.TypeLiteralNode>node;
 
-        // First check whether it's indexable (e.g. {[key:string]:number}.
+        // Special case 1: an ordinary indexable, e.g. {[key:string]:number}.
         // In that case we want to emit Object<string, number>.
-        let indexSig: ts.IndexSignatureDeclaration = null;
-        for (let member of typeLiteral.members) {
-          if (member.kind === ts.SyntaxKind.IndexSignature) {
-            indexSig = <ts.IndexSignatureDeclaration>member;
-            break;
-          }
-        }
-        if (indexSig) {
-          this.emit('Object<');
+        if (typeLiteral.members.length == 1 &&
+            typeLiteral.members[0].kind === ts.SyntaxKind.IndexSignature) {
+          let indexSig = <ts.IndexSignatureDeclaration>typeLiteral.members[0];
+          let keyType: string;
           if (indexSig.parameters.length != 1) {
             this.error(
                 indexSig,
                 `index signature expected 1 parameters, got ${indexSig.parameters.length}`);
-            this.emit('?');
+            keyType = '?';
           } else {
-            this.emitClosureType(indexSig.parameters[0].type);
+            keyType = this.typeToClosure(indexSig.parameters[0].type);
           }
-          this.emit(',');
-          this.emitClosureType(indexSig.type);
-          this.emit('>');
-          return;
+          return `Object<${keyType},${valType}>`;
         }
 
-        // Otherwise, emit {a:string, b:number}, etc.
-        this.emit('{');
-        let first = true;
-        for (let member of typeLiteral.members) {
-          if (first) {
-            first = false;
-          } else {
-            this.emit(', ');
-          }
-          if (member.kind === ts.SyntaxKind.PropertySignature) {
+        // Special case 2: a collection of named fields.
+        // Emit {a:string, b:number}, etc.
+        if (typeLiteral.members.every(m => m.kind === ts.SyntaxKind.PropertySignature)) {
+          let memberTypes: string[] = [];
+          for (let member of typeLiteral.members) {
             let prop = <ts.PropertySignature>member;
-            this.emit(prop.name.getText());
-            this.emit(': ');
-            this.emitClosureType(prop.type);
-          } else {
-            this.errorUnimplementedKind(member, 'type literal member');
+            let optional = prop.questionToken != null;
+            let type = this.typeToClosure(prop.type);
+            if (optional) type = `(${type}|undefined)`;
+            memberTypes.push(`${prop.name.getText()}: ${type}`);
           }
+          return `{${memberTypes.join(', ')}}`;
         }
-        this.emit('}');
-        return;
+
+        // Otherwise it's a mixture of the above or something else complicated;
+        // give up.
+        return '?';
       case ts.SyntaxKind.ArrayType:
         let arrayType = <ts.ArrayTypeNode>node;
-        this.emit('Array<');
-        this.emitClosureType(arrayType.elementType);
-        this.emit('>');
-        return;
+        return `Array<${this.typeToClosure(arrayType.elementType)}>`;
+      case ts.SyntaxKind.UnionType:
+        let unionType = <ts.UnionTypeNode>node;
+        let types = unionType.types.map(t => this.typeToClosure(t)).join('|');
+        return `(${types})`;
+      case ts.SyntaxKind.ParenthesizedType:
+        let parenType = <ts.ParenthesizedTypeNode>node;
+        return `(${this.typeToClosure(parenType.type)})`;
       default:
         this.errorUnimplementedKind(node, 'converting type to closure');
-        this.emit('?');
+        return '?';
     }
   }
 
   private visitTypeAlias(node: ts.TypeAliasDeclaration) {
     if (this.options.untyped) return;
     // Write a Closure typedef, which involves an unused "var" declaration.
-    this.emit('/** @typedef {');
-    this.emitClosureType(node.type);
-    this.emit('} */\n');
-    this.emit('var ');
-    this.emit(node.name.getText());
-    this.emit(': void;\n');
+    this.emit(`/** @typedef {${this.typeToClosure(node.type)}} */\n`);
+    this.emit(`var ${node.name.getText()}: void;\n`);
   }
 
   private visitEnum(node: ts.EnumDeclaration) {
@@ -850,11 +831,11 @@ class Annotator {
       return;
     }
     if (skipComments) {
-      this.fail('skipComments unimplemented for complex Nodes');
+      this.error(node, 'skipComments unimplemented for complex Nodes');
     }
     let lastEnd = node.getFullStart();
     for (let child of node.getChildren()) {
-      this.writeTextFromOffset(lastEnd, child);
+      this.writeRange(lastEnd, child.getFullStart());
       this.visit(child);
       lastEnd = child.getEnd();
     }
@@ -865,25 +846,13 @@ class Annotator {
   // Write a span of the input file as expressed by absolute offsets.
   // These offsets are found in attributes like node.getFullStart() and
   // node.getEnd().
-  private writeRange(from: number, to: number): number {
+  private writeRange(from: number, to: number) {
     // getSourceFile().getText() is wrong here because it the text of
     // the SourceFile node of the AST, which doesn't contain the comments
     // preceding that node.  Semantically these ranges are just offsets
     // into the original source file text, so slice from that.
     let text = this.file.text.slice(from, to);
     if (text) this.emit(text);
-    return to;
-  }
-
-  private writeTextBetween(node: ts.Node, to: ts.Node): number {
-    return this.writeRange(node.getFullStart(), to.getFullStart());
-  }
-
-  private writeTextFromOffset(from: number, node: ts.Node): number {
-    let to = node.getFullStart();
-    if (from == to) return to;
-    this.assert(to > from, `Offset must not be smaller; ${to} vs ${from}`);
-    return this.writeRange(from, to);
   }
 
   /**
@@ -907,28 +876,75 @@ class Annotator {
       code: undefined,
     });
   }
-
-  /**
-   * fail causes the current compilation to abort with an error message.
-   * It should only be used for internal compiler errors; otherwise,
-   * use this.error().
-   */
-  private fail(msg: string) {
-    let offset = this.currentNode.getFullStart();
-    let {line, character} = this.file.getLineAndCharacterOfPosition(offset);
-    throw new Error(`near node starting at ${line+1}:${character+1}: ${msg}`);
-  }
-
-  private assert(condition: boolean, msg: string) {
-    if (!condition) this.fail(msg);
-  }
 }
 
-function last<T>(elems: T[]): T {
-  return elems.length ? elems[elems.length - 1] : null;
-}
-
-export function annotate(
-    program: ts.Program, file: ts.SourceFile, options: SickleOptions = {}): SickleOutput {
+export function annotate(program: ts.Program, file: ts.SourceFile, options: Options = {}): Output {
   return new Annotator(program, file, options).annotate();
+}
+
+/**
+ * Converts TypeScript's JS+CommonJS output to Closure goog.module etc.
+ * For use as a postprocessing step *after* TypeScript emits JavaScript.
+ *
+ * @param fileName The source file name, without an extension.
+ * @param pathToModuleName A function that maps a filesystem .ts path to a
+ *     Closure module name, as found in a goog.require('...') statement.
+ *     The context parameter is the referencing file, used for resolving
+ *     imports with relative paths like "import * as foo from '../foo';".
+ */
+export function convertCommonJsToGoogModule(
+    fileName: string, content: string, pathToModuleName: (context: string, fileName: string) =>
+                                           string): {output: string, referencedModules: string[]} {
+  // TODO(evanm): this function is currently a cut'n'paste of the
+  // Google-internal hack while we move the code to the sickle repository.
+  // Rewrite this to use the TypeScript JS parser instead of regexes.
+
+  let referencedModules: string[] = [];
+
+  // Strip the first instance of "use strict" in the file, likely near
+  // the top.  This is OK: goog.module code is always loaded in strict mode.
+  content = content.replace(/^"use strict";$/m, '');
+  // NB: No linebreak after module call so sourcemaps are not offset.
+  const moduleName = pathToModuleName('', fileName);
+  content = `goog.module('${moduleName}');${content}`;
+
+  // Replace goog:foo.Bar style imports.
+  // The regular expressions below precisely match TypeScript's expected
+  // output
+  let defaultImportSymbols: string[] = [];
+  content = content.replace(
+      /((?:var|const)\s+([^=]+?)\s*=\s*)require\(["']goog:([^'"]+)['"]\);/g,
+      (match, beforeRequire, symbol, modName) => {
+        defaultImportSymbols.push(symbol);
+        return beforeRequire + 'goog.require(\'' + modName + '\');';
+      });
+
+  // This also needs to replace the usage sites of the form $symbol.default
+  // (e.g. goog_foo_Bar_1.default), because goog: imports are not real ES6
+  // imports, so they don't provide a "default" property.
+  // This is a hack, but symbol collision is very unlikely.
+  if (defaultImportSymbols.length) {
+    let symbolRe = new RegExp('(\\b' + defaultImportSymbols.join('|') + ')\\.default\\b', 'g');
+    // Whitespace matches the    .default part so that source maps keep
+    // working.
+    content = content.replace(symbolRe, '$1        ');
+  }
+
+  // Replace regular module imports.
+  // All require statements must be assigned.
+  // import 'z'          ==> var unused_xxx = require('z')
+  // import {x} from 'y' ==> var ... = require('y')
+  let unusedIdx = 0;
+  content = content.replace(
+      /(((?:^|;)\s*)|= )require\(["']([^'";]+)['"]\);/gm, (match, prefix, leading, modName) => {
+        modName = pathToModuleName(fileName, modName);
+        referencedModules.push(modName);
+        if (prefix === leading) {
+          // No prefix ==> side effect style "import 'foo';".
+          prefix = prefix + 'var unused_' + unusedIdx++ + '_ = ';
+        }
+        return `${prefix}goog.require('${modName}');`;
+      });
+
+  return {output: content, referencedModules};
 }
