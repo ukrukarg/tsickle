@@ -35,21 +35,18 @@ function createCompilerHost(input: string): ts.CompilerHost {
     getCurrentDirectory(): string { return '/'; },
     getDirectories(path: string): string[] { throw new Error('getDirectories'); },
     getCanonicalFileName(fileName: string): string { return fileName; },
-    useCaseSensitiveFileNames(): boolean { return false; },
+    useCaseSensitiveFileNames(): boolean { return true; },
     getNewLine(): string { return '\n'; },
   };
 }
 
-function main() {
-  let input = 'declare let x;';
-
+function generateExterns(input: string): string {
   let host = createCompilerHost(input);
   let program = ts.createProgram([inputFileName], compilerOptions, host);
   {
     let diagnostics = ts.getPreEmitDiagnostics(program);
     if (diagnostics.length > 0) {
-      console.error(diagnostics);
-      return null;
+      return tsickle.formatDiagnostics(diagnostics);
     }
   }
 
@@ -59,10 +56,20 @@ function main() {
   };
   let {externs, diagnostics} = tsickle.annotate(program, program.getSourceFile(inputFileName), tsickleOptions);
   if (diagnostics.length > 0) {
-    console.error(diagnostics);
-    return null;
+    return tsickle.formatDiagnostics(diagnostics);
   }
-  console.log('externs', externs);
+  return externs || '[no externs generated]';
+}
+
+function main() {
+  let inputArea = document.getElementById('input')! as HTMLTextAreaElement;
+  let outputArea = document.getElementById('output')!;
+  let button = document.getElementById('tsickle')!;
+  button.onclick = () => {
+    let input = inputArea.value;
+    let output = generateExterns(input);
+    outputArea.innerText = output;
+  };
 }
 
 main();
