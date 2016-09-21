@@ -87,7 +87,7 @@ gulp.task('test', ['test.unit', 'test.e2e', 'test.check-format', 'test.check-lin
 gulp.task('watch', function() {
   failOnError = false;
   gulp.start(['test.unit']);  // Trigger initial build.
-  return gulp.watch(['src/**/*.ts', 'test/**/*.ts', 'test_files/**'], ['test.unit']);
+  return gulp.watch(['src/**/*.ts', 'test/**/*.ts', 'test_files/**'], ['compile']);
 });
 
 gulp.task('default', ['compile']);

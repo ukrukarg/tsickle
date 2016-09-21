@@ -20,6 +20,7 @@
     "src/tsickle.ts",
     "src/type-translator.ts",
     "src/util.ts",
+    "src/web.ts",
     "test/decorator-annotator_test.ts",
     "test/e2e_test.ts",
     "test/es5processor_test.ts",
