@@ -34,4 +34,13 @@ describe('source maps', () => {
     expect(consumer.originalPositionFor({line: secondClassLine, column: 20}).line)
         .to.equal(3, 'second class definition');
   });
+
+  // it('generates correct function source maps', () => {
+  //       const sources = new Map<string, string>();
+  //   sources.set('input.ts', `
+  //     function stringify(s: string): string {
+  //       return s;
+  //     }`);
+
+  // })
 });
