@@ -15,10 +15,17 @@ def _nodejs_workspace_impl(ctx):
   # https://www.bazel.build/versions/master/docs/skylark/lib/repository_ctx.html#symlink
   ctx.symlink(node, "nodejs_bin")
 
+  ctx.file("BUILD", """
+package(default_visibility=["//visibility:public"])
+alias(
+    name = "node",
+    actual = "//:nodejs_bin",
+)
+""", False)   
   ctx.template("typescript.bzl", Label("//build_defs:typescript.bzl"))
   ctx.template("generate_build_file.js",  Label("//build_defs:generate_build_file.js"))
 
-  result = ctx.execute(["./generate_build_file.js", ctx.path(ctx.attr.package_json), ctx.path("BUILD")])
+  result = ctx.execute(["./generate_build_file.js", ctx.path(ctx.attr.package_json)])
   if result.return_code > 0:
     print(result.stdout)
     print(result.stderr)
