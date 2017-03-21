@@ -48,6 +48,10 @@ function compareAgainstGolden(output: string|null, path: string) {
     }
   }
 
+  // Make sure we have proper line endings when testing on Windows.
+  if (golden != null) golden = golden.replace(/\r\n/g, '\n');
+  if (output != null) output = output.replace(/\r\n/g, '\n');
+
   if (UPDATE_GOLDENS && output !== golden) {
     console.log('Updating golden file for', path);
     if (output !== null) {
@@ -62,7 +66,7 @@ function compareAgainstGolden(output: string|null, path: string) {
       }
     }
   } else {
-    expect(output).to.equal(golden);
+    expect(output).to.equal(golden, path);
   }
 }
 
@@ -133,12 +137,21 @@ testFn('golden tests', () => {
         };
         // Run TypeScript through tsickle and compare against goldens.
         let {output, externs, diagnostics} = tsickle.annotate(
-            program, program.getSourceFile(tsPath), options, {
+            program, program.getSourceFile(tsPath),
+            (context, importPath) => {
+              importPath = importPath.replace(/(\.d)?\.[tj]s$/, '');
+              if (importPath[0] === '.') importPath = path.join(path.dirname(context), importPath);
+              return importPath.replace(/\/|\\/g, '.');
+            },
+            options, {
               fileExists: ts.sys.fileExists,
               readFile: ts.sys.readFile,
             },
             testSupport.compilerOptions);
-        if (externs) allExterns = externs;
+        if (externs && !test.name.endsWith('.no_externs')) {
+          if (!allExterns) allExterns = tsickle.EXTERNS_HEADER;
+          allExterns += externs;
+        }
 
         // If there were any diagnostics, convert them into strings for
         // the golden output.

@@ -19,7 +19,7 @@ export function toArray<T>(iterator: Iterator<T>): T[] {
     if (ir.done) {
       break;
     }
-    array.push(ir.value!);
+    array.push(ir.value);
   }
   return array;
 }
@@ -52,7 +52,7 @@ export function createSourceReplacingCompilerHost(
       onError?: (message: string) => void): ts.SourceFile {
     let path: string = ts.sys.resolvePath(fileName);
     let sourceText = substituteSource.get(path);
-    if (sourceText) {
+    if (sourceText !== undefined) {
       return ts.createSourceFile(fileName, sourceText, languageVersion);
     }
     return delegate.getSourceFile(path, languageVersion, onError);
@@ -87,11 +87,4 @@ export function createOutputRetainingCompilerHost(
       onError?: (message: string) => void, sourceFiles?: ts.SourceFile[]): void {
     outputFiles.set(fileName, content);
   }
-}
-
-export function extractInlineSourceMap(source: string): string {
-  const regex = new RegExp('^//# sourceMappingURL=data:application/json;base64,(.*)$', 'm');
-  const result = regex.exec(source)!;
-  const base64EncodedMap = result[1];
-  return Buffer.from(base64EncodedMap, 'base64').toString('utf8');
 }
