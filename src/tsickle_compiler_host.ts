@@ -231,12 +231,14 @@ export class TsickleCompilerHost implements ts.CompilerHost {
     const tscSourceMapConsumer = sourceMapUtils.sourceMapTextToConsumer(tscSourceMapText);
     const tscSourceMapGenerator = sourceMapUtils.sourceMapConsumerToGenerator(tscSourceMapConsumer);
 
+    console.error(`original typescript source map for ${filePath}\n${tscSourceMapText}`);
+
     if (this.tsickleSourceMaps.size > 0) {
       // TODO(lucassloan): remove when the .d.ts has the correct types
       for (const sourceFileName of (tscSourceMapConsumer as any).sources) {
         const sourceMapKey = this.getSourceMapKeyForPathAndName(filePath, sourceFileName);
         const tsickleSourceMapGenerator = this.tsickleSourceMaps.get(sourceMapKey)!;
-        console.log(`closurization source map for ${filePath}\n${tsickleSourceMapGenerator.toString()}`);
+        console.error(`closurization source map for ${filePath}\n${tsickleSourceMapGenerator.toString()}`);
         const tsickleSourceMapConsumer = sourceMapUtils.sourceMapGeneratorToConsumer(
             tsickleSourceMapGenerator, sourceFileName, sourceFileName);
         tscSourceMapGenerator.applySourceMap(tsickleSourceMapConsumer);
@@ -248,7 +250,7 @@ export class TsickleCompilerHost implements ts.CompilerHost {
         const sourceMapKey = this.getSourceMapKeyForPathAndName(filePath, sourceFileName);
         const decoratorDownlevelSourceMapGenerator =
             this.decoratorDownlevelSourceMaps.get(sourceMapKey)!;
-        console.log(`decorator downlevel source map for ${filePath}\n${decoratorDownlevelSourceMapGenerator.toString()}`);
+        console.error(`decorator downlevel source map for ${filePath}\n${decoratorDownlevelSourceMapGenerator.toString()}`);
         const decoratorDownlevelSourceMapConsumer = sourceMapUtils.sourceMapGeneratorToConsumer(
             decoratorDownlevelSourceMapGenerator, sourceFileName, sourceFileName);
         tscSourceMapGenerator.applySourceMap(decoratorDownlevelSourceMapConsumer);
@@ -260,7 +262,7 @@ export class TsickleCompilerHost implements ts.CompilerHost {
         const sourceMapKey = this.getSourceMapKeyForPathAndName(filePath, sourceFileName);
         const preexistingSourceMapGenerator = this.preexistingSourceMaps.get(sourceMapKey);
         if (preexistingSourceMapGenerator) {
-          console.log(`preexisiting source map for ${filePath}\n${preexistingSourceMapGenerator.toString()}`);
+          console.error(`preexisiting source map for ${filePath}\n${preexistingSourceMapGenerator.toString()}`);
         }
         if (preexistingSourceMapGenerator) {
           const preexistingSourceMapConsumer = sourceMapUtils.sourceMapGeneratorToConsumer(
