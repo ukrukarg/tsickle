@@ -178,9 +178,9 @@ export class TsickleCompilerHost implements ts.CompilerHost {
         content = this.combineInlineSourceMaps(fileName, content);
       }
       if (this.options.googmodule && !isDtsFileName(fileName)) {
-        console.error(`file content of ${fileName} before googmoduling\n${content}`);
+        // console.error(`file content of ${fileName} before googmoduling\n${content}`);
         content = this.convertCommonJsToGoogModule(fileName, content);
-        console.error(`file content of ${fileName} after googmoduling\n${content}`);
+        // console.error(`file content of ${fileName} after googmoduling\n${content}`);
       }
     } else {
       content = this.combineSourceMaps(fileName, content);
@@ -233,14 +233,14 @@ export class TsickleCompilerHost implements ts.CompilerHost {
     const tscSourceMapConsumer = sourceMapUtils.sourceMapTextToConsumer(tscSourceMapText);
     const tscSourceMapGenerator = sourceMapUtils.sourceMapConsumerToGenerator(tscSourceMapConsumer);
 
-    // console.error(`original typescript source map for ${filePath}\n${tscSourceMapText}`);
+    console.error(`original typescript source map for ${filePath}\n${tscSourceMapText}`);
 
     if (this.tsickleSourceMaps.size > 0) {
       // TODO(lucassloan): remove when the .d.ts has the correct types
       for (const sourceFileName of (tscSourceMapConsumer as any).sources) {
         const sourceMapKey = this.getSourceMapKeyForPathAndName(filePath, sourceFileName);
         const tsickleSourceMapGenerator = this.tsickleSourceMaps.get(sourceMapKey)!;
-        // console.error(`closurization source map for ${filePath}\n${tsickleSourceMapGenerator.toString()}`);
+        console.error(`closurization source map for ${filePath}\n${tsickleSourceMapGenerator.toString()}`);
         const tsickleSourceMapConsumer = sourceMapUtils.sourceMapGeneratorToConsumer(
             tsickleSourceMapGenerator, sourceFileName, sourceFileName);
         tscSourceMapGenerator.applySourceMap(tsickleSourceMapConsumer);
@@ -252,7 +252,7 @@ export class TsickleCompilerHost implements ts.CompilerHost {
         const sourceMapKey = this.getSourceMapKeyForPathAndName(filePath, sourceFileName);
         const decoratorDownlevelSourceMapGenerator =
             this.decoratorDownlevelSourceMaps.get(sourceMapKey)!;
-        // console.error(`decorator downlevel source map for ${filePath}\n${decoratorDownlevelSourceMapGenerator.toString()}`);
+        console.error(`decorator downlevel source map for ${filePath}\n${decoratorDownlevelSourceMapGenerator.toString()}`);
         const decoratorDownlevelSourceMapConsumer = sourceMapUtils.sourceMapGeneratorToConsumer(
             decoratorDownlevelSourceMapGenerator, sourceFileName, sourceFileName);
         tscSourceMapGenerator.applySourceMap(decoratorDownlevelSourceMapConsumer);
@@ -264,7 +264,7 @@ export class TsickleCompilerHost implements ts.CompilerHost {
         const sourceMapKey = this.getSourceMapKeyForPathAndName(filePath, sourceFileName);
         const preexistingSourceMapGenerator = this.preexistingSourceMaps.get(sourceMapKey);
         if (preexistingSourceMapGenerator) {
-          // console.error(`preexisiting source map for ${filePath}\n${preexistingSourceMapGenerator.toString()}`);
+          console.error(`preexisiting source map for ${filePath}\n${preexistingSourceMapGenerator.toString()}`);
         }
         if (preexistingSourceMapGenerator) {
           const preexistingSourceMapConsumer = sourceMapUtils.sourceMapGeneratorToConsumer(
@@ -346,7 +346,7 @@ export class TsickleCompilerHost implements ts.CompilerHost {
     }
     this.diagnostics = diagnostics;
     this.tsickleSourceMaps.set(this.getSourceMapKeyForSourceFile(sourceFile), sourceMap);
-    console.error(`content of ${fileName} after closurization\n${output}`);
+    // console.error(`content of ${fileName} after closurization\n${output}`);
     return ts.createSourceFile(fileName, output, languageVersion, true);
   }
 
