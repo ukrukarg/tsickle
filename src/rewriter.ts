@@ -55,8 +55,10 @@ export abstract class Rewriter {
     // this.logWithIndent('node: ' + ts.SyntaxKind[node.kind]);
     this.indent++;
     if (!this.maybeProcess(node)) {
-      console.error('writing node');
       this.writeNode(node);
+    }
+    else {
+      console.error(`didn't normally write node.`);
     }
     this.indent--;
   }
