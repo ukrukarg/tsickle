@@ -102,7 +102,9 @@ class ES5Processor extends Rewriter {
    * because some top-level statements are handled specially.
    */
   visitTopLevel(node: ts.Node) {
-    console.error(ts.SyntaxKind[node.kind]);
+    if (this.file.fileName.includes('util')) {
+      console.error(ts.SyntaxKind[node.kind]);
+    }
     switch (node.kind) {
       case ts.SyntaxKind.ExpressionStatement:
         // Check for "use strict" and skip it if necessary.
