@@ -179,11 +179,11 @@ export class TsickleCompilerHost implements ts.CompilerHost {
       }
       if (this.options.googmodule && !isDtsFileName(fileName)) {
         if (fileName.includes('util')) {
-          console.error(`file content of ${fileName} before googmoduling\n${content}`);
+          // console.error(`file content of ${fileName} before googmoduling\n${content}`);
         }
         content = this.convertCommonJsToGoogModule(fileName, content);
         if (fileName.includes('util')) {
-          console.error(`file content of ${fileName} after googmoduling\n${content}`);
+          // console.error(`file content of ${fileName} after googmoduling\n${content}`);
         }
       }
     } else {
@@ -351,7 +351,7 @@ export class TsickleCompilerHost implements ts.CompilerHost {
     this.diagnostics = diagnostics;
     this.tsickleSourceMaps.set(this.getSourceMapKeyForSourceFile(sourceFile), sourceMap);
     if (fileName.includes('util')) {
-      console.error(`content of ${fileName} after closurization\n${output}`);
+      // console.error(`content of ${fileName} after closurization\n${output}`);
     }
     return ts.createSourceFile(fileName, output, languageVersion, true);
   }
