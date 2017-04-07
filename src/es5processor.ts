@@ -109,6 +109,7 @@ class ES5Processor extends Rewriter {
       case ts.SyntaxKind.ExpressionStatement:
         // Check for "use strict" and skip it if necessary.
         if (!this.strippedStrict && this.isUseStrict(node)) {
+          console.error('skipping use strict');
           this.writeRange(node.getFullStart(), node.getStart());
           this.strippedStrict = true;
           return;
