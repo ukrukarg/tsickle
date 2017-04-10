@@ -1260,17 +1260,12 @@ class ExternsWriter extends ClosureRewriter {
           case ts.SyntaxKind.Identifier:
             // E.g. "declare namespace foo {"
             let name = getIdentifierText(decl.name as ts.Identifier);
-            if (name === 'global') {
-              // E.g. "declare global { ... }".  Reset to the outer namespace.
-              namespace = [];
-            } else {
-              if (this.isFirstDeclaration(decl)) {
-                this.emit('/** @const */\n');
-                this.writeExternsVariable(name, namespace, '{}');
-              }
-              namespace = namespace.concat(name);
+            if (name === undefined) break;
+            if (this.isFirstDeclaration(decl)) {
+              this.emit('/** @const */\n');
+              this.writeExternsVariable(name, namespace, '{}');
             }
-            if (decl.body) this.visit(decl.body, namespace);
+            if (decl.body) this.visit(decl.body, namespace.concat(name));
             break;
           case ts.SyntaxKind.StringLiteral:
             // E.g. "declare module 'foo' {" (note the quotes).
