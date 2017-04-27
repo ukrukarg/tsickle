@@ -1,6 +1,7 @@
 declare namespace DeclareTestModule {
   namespace inner {
     var someBool: boolean;
+    var fooReference: Foo;
   }
 
   interface Foo {

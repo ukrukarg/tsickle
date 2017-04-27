@@ -81,6 +81,12 @@ export function formatDiagnostics(diags: ts.Diagnostic[]): string {
       .join('\n');
 }
 
+/** @return true if node or any of its ancestor namespaces/modules is ambient. */
+function isInAmbientContext(node: ts.Node) {
+  // isInAmbientContext is not exposed, but useful.
+  return (ts as any).isInAmbientContext(node);
+}
+
 /** @return true if node has the specified modifier flag set. */
 function hasModifierFlag(node: ts.Node, flag: ts.ModifierFlags): boolean {
   return (ts.getCombinedModifierFlags(node) & flag) !== 0;
@@ -364,7 +370,7 @@ class ClosureRewriter extends Rewriter {
       if (!heritage.types) continue;
       if (decl.kind === ts.SyntaxKind.ClassDeclaration &&
           heritage.token !== ts.SyntaxKind.ImplementsKeyword &&
-          !hasModifierFlag(decl, ts.ModifierFlags.Ambient)) {
+         !isInAmbientContext(decl)) {
         // If a class has "extends Foo", that is preserved in the ES6 output
         // and we don't need to do anything.  But if it has "implements Foo",
         // that is a TS-specific thing and we need to translate it to the
@@ -379,6 +385,7 @@ class ClosureRewriter extends Rewriter {
         // "@extends {Class}" because this is just a type hint.
         let typeChecker = this.program.getTypeChecker();
         let sym = typeChecker.getSymbolAtLocation(impl.expression);
+        let resolvedAlias = sym;
         if (sym.flags & ts.SymbolFlags.TypeAlias) {
           // It's implementing a type alias.  Follow the type alias back
           // to the original symbol to check whether it's a type or a value.
@@ -388,25 +395,34 @@ class ClosureRewriter extends Rewriter {
             // do is fail to emit the @implements, which isn't so harmful.
             continue;
           }
-          sym = type.symbol;
+          resolvedAlias = type.symbol;
         }
-        if (sym.flags & ts.SymbolFlags.Alias) {
-          sym = typeChecker.getAliasedSymbol(sym);
+        resolvedAlias = resolvedAlias.flags & ts.SymbolFlags.Alias ? typeChecker.getAliasedSymbol(resolvedAlias) : resolvedAlias;
+        if (resolvedAlias.flags & ts.SymbolFlags.Alias) {
+          resolvedAlias = typeChecker.getAliasedSymbol(resolvedAlias);
         }
-        if (this.newTypeTranslator(impl.expression).isBlackListed(sym)) {
+        if (this.newTypeTranslator(impl.expression).isBlackListed(resolvedAlias)) {
           continue;
         }
-        if (sym.flags & ts.SymbolFlags.Class) {
+        if (resolvedAlias.flags & ts.SymbolFlags.Class) {
           tagName = 'extends';
-        } else if (sym.flags & ts.SymbolFlags.Value) {
+        } else if (resolvedAlias.flags & ts.SymbolFlags.Value) {
           // If the symbol was already in the value namespace, then it will
           // not be a type in the Closure output (because Closure collapses
           // the type and value namespaces).  Just ignore the implements.
           continue;
         }
         // typeToClosure includes nullability modifiers, so getText() directly here.
-        const alias = this.symbolsToAliasedNames.get(sym);
-        docTags.push({tagName, type: alias || impl.getText()});
+        const alias = this.symbolsToAliasedNames.get(resolvedAlias);
+        // handle name.spaced.Declarations and ambient external modules.
+        // this is a lexical concept within the current file, so it uses the non-aliased name.
+        let fqn = typeChecker.getFullyQualifiedName(sym);
+        if (fqn.indexOf('\'') !== -1) {
+          // 'module_name'.SymbolName is an ambient external module.
+          fqn = fqn.replace(/[^A-Za-z_'"]/, '_')
+          fqn = fqn.replace(/['"]([^'"]+)['"]/, typeTranslator.AMBIENT_MODULE_PREFIX + '.$1')
+        }
+        docTags.push({tagName, type: alias || fqn});
       }
     }
   }
@@ -575,7 +591,7 @@ class Annotator extends ClosureRewriter {
    *     emit it as is and visit its children.
    */
   maybeProcess(node: ts.Node): boolean {
-    if (hasModifierFlag(node, ts.ModifierFlags.Ambient) || isDtsFileName(this.file.fileName)) {
+    if (isInAmbientContext(node) || isDtsFileName(this.file.fileName)) {
       this.externsWriter.visit(node);
       // An ambient declaration declares types for TypeScript's benefit, so we want to skip Tsickle
       // conversion of its contents.
@@ -1288,8 +1304,8 @@ class ExternsWriter extends ClosureRewriter {
 
             // Declare the top-level "tsickle_declare_module".
             this.emit('/** @const */\n');
-            this.writeExternsVariable('tsickle_declare_module', [], '{}');
-            namespace = ['tsickle_declare_module'];
+            this.writeExternsVariable(typeTranslator.AMBIENT_MODULE_PREFIX, [], '{}');
+            namespace = [typeTranslator.AMBIENT_MODULE_PREFIX];
 
             // Declare the inner "tsickle_declare_module.foo".
             let importName = (decl.name as ts.StringLiteral).text;

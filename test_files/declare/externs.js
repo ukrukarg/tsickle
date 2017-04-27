@@ -17,6 +17,8 @@ var DeclareTestModule = {};
 DeclareTestModule.inner = {};
  /** @type {boolean} */
 DeclareTestModule.inner.someBool;
+ /** @type {!DeclareTestModule.Foo} */
+DeclareTestModule.inner.fooReference;
 /**
  * @record
  * @struct

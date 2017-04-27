@@ -50,3 +50,60 @@ function ImplementingClass() {}
  * @return {void}
  */
 ImplementingClass.prototype.foo = function() {};
+/** @const */
+var tsickle_declare_module = {};
+// Derived from: declare module "in_module"
+/** @const */
+tsickle_declare_module.in_module = {};
+/**
+ * @constructor
+ * @struct
+ */
+tsickle_declare_module.in_module.Parent = function() {};
+/**
+ * @extends {tsickle_declare_module.in_module.Parent}
+ * @constructor
+ * @struct
+ */
+tsickle_declare_module.in_module.Child = function() {};
+/**
+ * @record
+ * @struct
+ */
+tsickle_declare_module.in_module.ParentIf = function() {};
+/**
+ * @extends {tsickle_declare_module.in_module.ParentIf}
+ * @record
+ * @struct
+ */
+tsickle_declare_module.in_module.ChildIf = function() {};
+ /** @type {?} */
+tsickle_declare_module.in_module.ChildIf.prototype.If;
+/** @const */
+var myName = {};
+/** @const */
+myName.space = {};
+/**
+ * @constructor
+ * @struct
+ */
+myName.space.Parent = function() {};
+/**
+ * @extends {myName.space.Parent}
+ * @constructor
+ * @struct
+ */
+myName.space.Child = function() {};
+/**
+ * @record
+ * @struct
+ */
+myName.space.ParentIf = function() {};
+/**
+ * @extends {myName.space.ParentIf}
+ * @record
+ * @struct
+ */
+myName.space.ChildIf = function() {};
+ /** @type {?} */
+myName.space.ChildIf.prototype.If;

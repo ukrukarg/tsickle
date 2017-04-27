@@ -16,6 +16,8 @@ export function assertTypeChecked(sourceFile: ts.SourceFile) {
   }
 }
 
+export const AMBIENT_MODULE_PREFIX = 'tsickle_declare_module';
+
 /**
  * Determines if fileName refers to a builtin lib.d.ts file.
  * This is a terrible hack but it mirrors a similar thing done in Clutz.
@@ -170,6 +172,12 @@ export class TypeTranslator {
     let str = '';
     let alias = this.symbolsToAliasedNames.get(sym);
     if (alias) return alias;
+    let fqn = this.typeChecker.getFullyQualifiedName(sym);
+    if (fqn.match(/[."']/)) {
+      // 'module_name'.SymbolName is an ambient external module.
+      return fqn.replace(/["']([^"']+)["']/, AMBIENT_MODULE_PREFIX + '.$1')
+      // return fqn;
+    }
     let writeText = (text: string) => str += text;
     let doNothing = () => {
       return;

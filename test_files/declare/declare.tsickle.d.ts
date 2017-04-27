@@ -1,8 +1,9 @@
-Warning at test_files/declare/declare.d.ts:92:1: anonymous type has no symbol
+Warning at test_files/declare/declare.d.ts:93:1: anonymous type has no symbol
 ====
 declare namespace DeclareTestModule {
   namespace inner {
     var someBool: boolean;
+    var fooReference: Foo;
   }
 
   interface Foo {
