@@ -6,6 +6,8 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+// copybara test
+
 import * as path from 'path';
 
 // Postprocess generated JS.
