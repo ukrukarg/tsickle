@@ -129,6 +129,16 @@ export function symbolToDebugString(sym: ts.Symbol): string {
   return debugString;
 }
 
+export const AMBIENT_EXTERNAL_MODULE_PREFIX = 'tsickle_declare_module';
+
+export function mangleExternalModulePath(importName: string): string {
+  return importName.replace(/_/, '__').replace(/[^A-Za-z]/g, '_');
+}
+
+function mangleAndPrefixExternalModulePath(importName: string): string {
+  return AMBIENT_EXTERNAL_MODULE_PREFIX + '.' + mangleExternalModulePath(importName);
+}
+
 /** TypeTranslator translates TypeScript types to Closure types. */
 export class TypeTranslator {
   /**
@@ -143,14 +153,13 @@ export class TypeTranslator {
    * @param pathBlackList is a set of paths that should never get typed;
    *     any reference to symbols defined in these paths should by typed
    *     as {?}.
-   * @param symbolsToPrefix a mapping from symbols (`Foo`) to a prefix they should be emitted with
-   *     (`tsickle_import.Foo`).
+   * @param symbolsToAliasedNames a mapping from symbols (`Foo`) to aliases for them.
    */
   constructor(
       private readonly typeChecker: ts.TypeChecker, private readonly node: ts.Node,
       private readonly pathBlackList?: Set<string>,
-      private readonly symbolsToAliasedNames:
-          Map<ts.Symbol, string> = new Map<ts.Symbol, string>()) {
+      private readonly symbolsToAliasedNames: Map<ts.Symbol, string> = new Map<ts.Symbol, string>(),
+      private readonly isAmbient = false) {
     // Normalize paths to not break checks on Windows.
     if (this.pathBlackList != null) {
       this.pathBlackList =
@@ -164,6 +173,7 @@ export class TypeTranslator {
    * - TypeChecker.typeToString translates Array as T[].
    * - TypeChecker.symbolToString emits types without their namespace,
    *   and doesn't let you pass the flag to control that.
+   *
    * @param useFqn whether to scope the name using its fully qualified name.
    */
   public symbolToString(sym: ts.Symbol, useFqn: boolean): string {
@@ -177,8 +187,17 @@ export class TypeTranslator {
         // Non-quoted FQNs mean the name is a global symbol (e.g. from namespace).
         return this.stripClutzNamespace(fqn);
       } else {
-        // TODO(martinprobst): Quoted FQNs mean the name is from a module. We still need to scope it
-        // for ambient declarations in externs.
+        if (this.isAmbient) {
+          // tsickle emits ambient external declarations during externs writing scoped into an
+          // invented namespace. This code makes sure to use the matching namespace for ambient
+          // types.
+          return fqn.replace(
+              /['"]([^'"])['"]/,
+              (fullMatch, importName) => mangleAndPrefixExternalModulePath(importName));
+        }
+        // TODO(martinprobst): only warn in externs, this is OK for
+        // non-ambient contexts.
+        // this.warn(`Cannot scope the module-scoped name ${fqn}`);
       }
     }
 

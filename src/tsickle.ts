@@ -1413,6 +1413,9 @@ class ExternsWriter extends ClosureRewriter {
 
             // Declare the top-level "tsickle_declare_module".
             this.emit('/** @const */\n');
+            // TODO(martinprobst): rather than mangling into something odd,
+            // would it be better to use a configured path -> namespace
+            // translator function?
             this.writeExternsVariable('tsickle_declare_module', [], '{}');
             namespace = ['tsickle_declare_module'];
 
@@ -1421,7 +1424,7 @@ class ExternsWriter extends ClosureRewriter {
             this.emit(`// Derived from: declare module "${importName}"\n`);
             // We also don't care about the actual name of the module ("foo"
             // in the above example), except that we want it to not conflict.
-            importName = importName.replace(/_/, '__').replace(/[^A-Za-z]/g, '_');
+            importName = typeTranslator.mangleExternalModulePath(importName);
             this.emit('/** @const */\n');
             this.writeExternsVariable(importName, namespace, '{}');
 
@@ -1473,6 +1476,14 @@ class ExternsWriter extends ClosureRewriter {
         this.emit(`\n/* TODO: ${ts.SyntaxKind[node.kind]} in ${namespace.join('.')} */\n`);
         break;
     }
+  }
+
+  newTypeTranslator(context: ts.Node) {
+    const translator = new typeTranslator.TypeTranslator(
+        this.program.getTypeChecker(), context, this.options.typeBlackListPaths,
+        this.symbolsToAliasedNames, /** isAmbient */ true);
+    translator.warn = msg => this.debugWarn(context, msg);
+    return translator;
   }
 
   /**

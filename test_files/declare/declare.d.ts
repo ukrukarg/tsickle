@@ -28,32 +28,36 @@ declare namespace DeclareTestModule {
     [key: string]: string;
   }
 
-  enum Enumeration {
-    Value1 = 2,
-    Value3
-  }
+  enum Enumeration { Value1 = 2, Value3 }
 
   enum StringEnum {
     'foo',
     '.tricky.invalid name',
   }
 
-  type TypeAlias = string | number;
+  type TypeAlias = string|number;
 }
 
 // This module is quoted, which declares an importable module.
 // We can't model this in externs beyond making sure it's declared
 // in *some* namespace;
-declare module "DeclareTest-QuotedModule" {
+declare module 'DeclareTest-QuotedModule' {
   var foo: string;
+  class ClassInAmbientExternalModule1 {}
+  class ClassInAmbientExternalModule2 {
+    x: ClassInAmbientExternalModule1;
+  }
+}
+
+declare module 'DeclareTest-QuotedModule-User' {
+  import {ClassInAmbientExternalModule1} from 'DeclareTest-QuotedModule';
+  let classInAmbientExternalModule: ClassInAmbientExternalModule1;
 }
 
 declare var declareGlobalVar: number;
 declare function declareGlobalFunction(x: string): number;
 
-declare interface DeclareTestInterface {
-  foo: string;
-}
+declare interface DeclareTestInterface { foo: string; }
 
 // Should be omitted from externs -- conflicts with Closure.
 declare var global: any;
@@ -67,9 +71,7 @@ declare class MultipleConstructors {
 
 // Add to an existing interface; we shouldn't redeclare Object
 // itself, but we still should declare the method.
-declare interface Object {
-  myMethod();
-}
+declare interface Object { myMethod(); }
 
 // An overloaded function that is also used as a namespace.
 declare function CodeMirror(x: string): CodeMirror.Editor;
@@ -102,9 +104,7 @@ declare function usesArguments(arguments: string);
 declare function destructures({a: number});
 
 // Properly generate top-level enums.
-declare enum ChartType {
-    line, bar
-}
+declare enum ChartType { line, bar }
 
 // Should be dropped; redundant with Closure builtins.
 interface ErrorConstructor {
