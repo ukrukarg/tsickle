@@ -43,6 +43,7 @@ function SubInterface() {}
 interface SubInterface extends StringIndexInterface {}
 /**
  * @record
+ * @extends {IArrayLike<number>}
  */
 function NumberIndexInterface() {}
 
@@ -52,6 +53,10 @@ function NumberIndexInterface() {}
 interface NumberIndexInterface {
   [k: number]: number;
 }
+/**
+ * @dict
+ * @implements {IArrayLike<number>}
+ */
 class NumberIndexClassWithProperty {
   [k: number]: number;
   property2: number;

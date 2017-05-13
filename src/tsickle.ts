@@ -359,6 +359,24 @@ class ClosureRewriter extends Rewriter {
 
   maybeAddHeritageClauses(
       docTags: jsdoc.Tag[], decl: ts.ClassLikeDeclaration|ts.InterfaceDeclaration) {
+    let typeChecker = this.program.getTypeChecker();
+    const extendsInterfaceTag =
+        decl.kind === ts.SyntaxKind.InterfaceDeclaration ? 'extends' : 'implements';
+
+    // If the type defines an index accessor, it must extend/implement IArrayLike.
+    const declType = typeChecker.getTypeAtLocation(decl.name || decl);
+    const numberIndexType = declType.getNumberIndexType();
+    if (numberIndexType) {
+      if (decl.kind === ts.SyntaxKind.ClassDeclaration) {
+        docTags.push({tagName: 'dict'});
+      }
+      const typeText = this.typeToClosure(decl, numberIndexType);
+      docTags.push({
+        tagName: extendsInterfaceTag,
+        type: `IArrayLike<${typeText}>`,
+      });
+    }
+
     if (!decl.heritageClauses) return;
     for (const heritage of decl.heritageClauses!) {
       if (!heritage.types) continue;
@@ -370,14 +388,12 @@ class ClosureRewriter extends Rewriter {
         // the Closure "@implements {Foo}".
         continue;
       }
-      // TODO add IArrayLike for things with type.getNumberIndexType().
       for (const impl of heritage.types) {
-        let tagName = decl.kind === ts.SyntaxKind.InterfaceDeclaration ? 'extends' : 'implements';
+        let tagName = extendsInterfaceTag;
 
         // We can only @implements an interface, not a class.
         // But it's fine to translate TS "implements Class" into Closure
         // "@extends {Class}" because this is just a type hint.
-        let typeChecker = this.program.getTypeChecker();
         let sym = typeChecker.getSymbolAtLocation(impl.expression);
         if (sym.flags & ts.SymbolFlags.TypeAlias) {
           // It's implementing a type alias.  Follow the type alias back
@@ -1140,6 +1156,7 @@ class Annotator extends ClosureRewriter {
 
   private visitProperty(namespace: string[], p: ts.Declaration) {
     // Index signatures are handled separately on interfaces and classes.
+    // Closure cannot support them on inline types, it has no syntax for it.
     if (p.kind === ts.SyntaxKind.IndexSignature) return;
     let name = this.propertyName(p);
     if (!name) {

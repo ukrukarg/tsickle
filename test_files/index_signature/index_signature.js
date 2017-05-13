@@ -26,8 +26,13 @@ mixedInstance['x'] = 1;
 function SubInterface() { }
 /**
  * @record
+ * @extends {IArrayLike<number>}
  */
 function NumberIndexInterface() { }
+/**
+ * @dict
+ * @implements {IArrayLike<number>}
+ */
 class NumberIndexClassWithProperty {
 }
 function NumberIndexClassWithProperty_tsickle_Closure_declarations() {

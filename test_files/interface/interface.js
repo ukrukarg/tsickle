@@ -31,6 +31,7 @@ usePoint(p);
 usePoint({ x: 1, y: 1 });
 /**
  * @record
+ * @extends {IArrayLike<number>}
  */
 function TrickyInterface() { }
 /** @type {number} */
