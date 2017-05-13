@@ -370,6 +370,7 @@ class ClosureRewriter extends Rewriter {
         // the Closure "@implements {Foo}".
         continue;
       }
+      // TODO add IArrayLike for things with type.getNumberIndexType().
       for (const impl of heritage.types) {
         let tagName = decl.kind === ts.SyntaxKind.InterfaceDeclaration ? 'extends' : 'implements';
 
@@ -408,6 +409,11 @@ class ClosureRewriter extends Rewriter {
         docTags.push({tagName, type: alias || impl.getText()});
       }
     }
+  }
+
+  maybeAddDictClause(docTags: jsdoc.Tag[], decl: ts.ClassLikeDeclaration|ts.InterfaceDeclaration) {
+    const t = this.program.getTypeChecker().getTypeAtLocation(decl);
+    if (t.getStringIndexType()) docTags.push({tagName: 'dict'});
   }
 
   /** Emits a type annotation in JSDoc, or {?} if the type is unavailable. */
@@ -1017,6 +1023,7 @@ class Annotator extends ClosureRewriter {
     if (!this.options.untyped) {
       this.maybeAddTemplateClause(docTags, classDecl);
       this.maybeAddHeritageClauses(docTags, classDecl);
+      this.maybeAddDictClause(docTags, classDecl);
     }
 
     this.emit('\n');
@@ -1048,6 +1055,9 @@ class Annotator extends ClosureRewriter {
     if (!this.options.untyped) {
       this.maybeAddTemplateClause(docTags, iface);
       this.maybeAddHeritageClauses(docTags, iface);
+      // Closure does not seem to have a concept of an record (structural) interface that also
+      // defines a string index accessor.
+      // this.maybeAddDictClause(docTags, iface);
     }
 
     this.emit('\n');
@@ -1129,6 +1139,8 @@ class Annotator extends ClosureRewriter {
   }
 
   private visitProperty(namespace: string[], p: ts.Declaration) {
+    // Index signatures are handled separately on interfaces and classes.
+    if (p.kind === ts.SyntaxKind.IndexSignature) return;
     let name = this.propertyName(p);
     if (!name) {
       this.emit(`/* TODO: handle strange member:\n${this.escapeForComment(p.getText())}\n*/\n`);

@@ -33,9 +33,6 @@ usePoint({ x: 1, y: 1 });
  * @record
  */
 function TrickyInterface() { }
-/* TODO: handle strange member:
-[offset: number]: number;
-*/
 /** @type {number} */
 TrickyInterface.prototype.foo;
 /* TODO: handle strange member:
