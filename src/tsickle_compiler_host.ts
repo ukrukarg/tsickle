@@ -43,6 +43,7 @@ export interface Options extends Es5ProcessorOptions, tsickle.AnnotatorOptions {
   // This method is here for backwards compatibility.
   // Use the method in TsickleHost instead.
   logWarning?: TsickleHost['logWarning'];
+  sourceMapSanityCheck?: boolean;
 }
 
 /**
@@ -77,6 +78,8 @@ export class TsickleCompilerHost implements ts.CompilerHost {
   /** externs.js files produced by tsickle, if any. */
   public externs: {[fileName: string]: string} = {};
 
+  private originalSourceFiles: Array<ts.SourceFile|undefined> = [];
+  private originalSourceFileMap = new Map<string, ts.SourceFile>();
   private sourceFileToPreexistingSourceMap = new Map<ts.SourceFile, SourceMapGenerator>();
   private preexistingSourceMaps = new Map<string, SourceMapGenerator>();
   private decoratorDownlevelSourceMaps = new Map<string, SourceMapGenerator>();
@@ -138,6 +141,7 @@ export class TsickleCompilerHost implements ts.CompilerHost {
       onError?: (message: string) => void): ts.SourceFile {
     if (this.runConfiguration === undefined || this.runConfiguration.pass === Pass.NONE) {
       const sourceFile = this.delegate.getSourceFile(fileName, languageVersion, onError);
+      this.originalSourceFiles.push(sourceFile);
       return this.stripAndStoreExistingSourceMap(sourceFile);
     }
 
@@ -174,13 +178,13 @@ export class TsickleCompilerHost implements ts.CompilerHost {
     this.delegate.writeFile(fileName, content, writeByteOrderMark, onError, sourceFiles);
   }
 
-  getSourceMapKeyForPathAndName(outputFilePath: string, sourceFileName: string): string {
+  getSourceFileKeyForPathAndName(outputFilePath: string, sourceFileName: string): string {
     const fileDir = path.dirname(outputFilePath);
 
     return this.getCanonicalFileName(path.resolve(fileDir, sourceFileName));
   }
 
-  getSourceMapKeyForSourceFile(sourceFile: ts.SourceFile): string {
+  getSourceFileKeyForSourceFile(sourceFile: ts.SourceFile): string {
     return this.getCanonicalFileName(path.resolve(sourceFile.fileName));
   }
 
@@ -212,9 +216,18 @@ export class TsickleCompilerHost implements ts.CompilerHost {
     // loaded.
     if (this.sourceFileToPreexistingSourceMap.size > 0 && this.preexistingSourceMaps.size === 0) {
       this.sourceFileToPreexistingSourceMap.forEach((sourceMap, sourceFile) => {
-        const sourceMapKey = this.getSourceMapKeyForSourceFile(sourceFile);
-        this.preexistingSourceMaps.set(sourceMapKey, sourceMap);
+        const sourceFileKey = this.getSourceFileKeyForSourceFile(sourceFile);
+        this.preexistingSourceMaps.set(sourceFileKey, sourceMap);
       });
+    }
+
+    if (this.originalSourceFiles.length > 0 && this.originalSourceFileMap.size === 0) {
+      for (const sourceFile of (this.originalSourceFiles)) {
+        if (sourceFile) {
+          const sourceFileKey = this.getSourceFileKeyForSourceFile(sourceFile);
+          this.originalSourceFileMap.set(sourceFileKey, sourceFile);
+        }
+      }
     }
 
     const tscSourceMapConsumer = sourceMapUtils.sourceMapTextToConsumer(tscSourceMapText);
@@ -229,8 +242,8 @@ export class TsickleCompilerHost implements ts.CompilerHost {
       // TODO(lucassloan): remove when the .d.ts has the correct types
       // tslint:disable-next-line:no-any
       for (const sourceFileName of (tscSourceMapConsumer as any).sources) {
-        const sourceMapKey = this.getSourceMapKeyForPathAndName(filePath, sourceFileName);
-        const tsickleSourceMapGenerator = this.tsickleSourceMaps.get(sourceMapKey)!;
+        const sourceFileKey = this.getSourceFileKeyForPathAndName(filePath, sourceFileName);
+        const tsickleSourceMapGenerator = this.tsickleSourceMaps.get(sourceFileKey)!;
         const tsickleSourceMapConsumer = sourceMapUtils.sourceMapGeneratorToConsumer(
             tsickleSourceMapGenerator, sourceFileName, sourceFileName);
         tscSourceMapGenerator.applySourceMap(tsickleSourceMapConsumer);
@@ -244,9 +257,9 @@ export class TsickleCompilerHost implements ts.CompilerHost {
       // TODO(lucassloan): remove when the .d.ts has the correct types
       // tslint:disable-next-line:no-any
       for (const sourceFileName of (tscSourceMapConsumer as any).sources) {
-        const sourceMapKey = this.getSourceMapKeyForPathAndName(filePath, sourceFileName);
+        const sourceFileKey = this.getSourceFileKeyForPathAndName(filePath, sourceFileName);
         const decoratorDownlevelSourceMapGenerator =
-            this.decoratorDownlevelSourceMaps.get(sourceMapKey)!;
+            this.decoratorDownlevelSourceMaps.get(sourceFileKey)!;
         const decoratorDownlevelSourceMapConsumer = sourceMapUtils.sourceMapGeneratorToConsumer(
             decoratorDownlevelSourceMapGenerator, sourceFileName, sourceFileName);
         tscSourceMapGenerator.applySourceMap(decoratorDownlevelSourceMapConsumer);
@@ -256,12 +269,70 @@ export class TsickleCompilerHost implements ts.CompilerHost {
         }
       }
     }
+
+    // Sanity check against the original file
+    if (this.options.sourceMapSanityCheck) {
+      const tsicklePlusTscSourceMap =
+          sourceMapUtils.sourceMapGeneratorToConsumer(tscSourceMapGenerator);
+      tsicklePlusTscSourceMap.eachMapping((mapping) => {
+        const sourceFileKey = this.getSourceFileKeyForPathAndName(filePath, mapping.source);
+        const sourceFile = this.originalSourceFileMap.get(sourceFileKey)!;
+        const lineStarts = sourceFile.getLineStarts();
+        // Check that it's on a line that exists in the source file
+        if (mapping.originalLine > lineStarts.length) {
+          console.log(
+              `Line ${mapping.originalLine} is beyond the last line, ${
+                                                                       lineStarts.length
+                                                                     } of ${mapping.source}`);
+          return;
+        }
+
+        // Check that the column isn't off the end of the line
+        const position = lineStarts[mapping.originalLine - 1] + mapping.originalColumn;
+        if (mapping.originalLine < lineStarts.length &&
+            position >= lineStarts[mapping.originalLine]) {
+          console.log(
+              `Line ${
+                      mapping.originalLine
+                    }, Column ${
+                                mapping.originalColumn
+                              } isn't on line ${
+                                                mapping.originalLine
+                                              } of ${
+                                                     mapping.source
+                                                   } which only has ${
+                                                                      lineStarts
+                                                                          [mapping.originalLine] -
+                                                                      lineStarts
+                                                                          [mapping.originalLine - 1]
+                                                                    } columns`);
+          return;
+        } else if (position > sourceFile.end) {
+          console.log(
+              `Line ${
+                      mapping.originalLine
+                    }, Column ${
+                                mapping.originalColumn
+                              } isn't on line ${
+                                                mapping.originalLine
+                                              } of ${
+                                                     mapping.source
+                                                   } which only has ${
+                                                                      sourceFile.end -
+                                                                      lineStarts
+                                                                          [mapping.originalLine - 1]
+                                                                    } columns`);
+          return;
+        }
+      }, this);
+    }
+
     if (this.preexistingSourceMaps.size > 0) {
       // TODO(lucassloan): remove when the .d.ts has the correct types
       // tslint:disable-next-line:no-any
       for (const sourceFileName of (tscSourceMapConsumer as any).sources) {
-        const sourceMapKey = this.getSourceMapKeyForPathAndName(filePath, sourceFileName);
-        const preexistingSourceMapGenerator = this.preexistingSourceMaps.get(sourceMapKey);
+        const sourceFileKey = this.getSourceFileKeyForPathAndName(filePath, sourceFileName);
+        const preexistingSourceMapGenerator = this.preexistingSourceMaps.get(sourceFileKey);
         if (preexistingSourceMapGenerator) {
           const preexistingSourceMapConsumer = sourceMapUtils.sourceMapGeneratorToConsumer(
               preexistingSourceMapGenerator, sourceFileName);
@@ -293,7 +364,7 @@ export class TsickleCompilerHost implements ts.CompilerHost {
       sourceFile: ts.SourceFile, program: ts.Program, fileName: string,
       languageVersion: ts.ScriptTarget): ts.SourceFile {
     this.decoratorDownlevelSourceMaps.set(
-        this.getSourceMapKeyForSourceFile(sourceFile), new SourceMapGenerator());
+        this.getSourceFileKeyForSourceFile(sourceFile), new SourceMapGenerator());
     if (this.environment.shouldSkipTsickleProcessing(fileName)) return sourceFile;
     let fileContent = sourceFile.text;
     const sourceMapper = new sourceMapUtils.DefaultSourceMapper(sourceFile.fileName);
@@ -307,7 +378,7 @@ export class TsickleCompilerHost implements ts.CompilerHost {
     }
     fileContent = converted.output;
     this.decoratorDownlevelSourceMaps.set(
-        this.getSourceMapKeyForSourceFile(sourceFile), sourceMapper.sourceMap);
+        this.getSourceFileKeyForSourceFile(sourceFile), sourceMapper.sourceMap);
     return ts.createSourceFile(fileName, fileContent, languageVersion, true);
   }
 
@@ -315,7 +386,7 @@ export class TsickleCompilerHost implements ts.CompilerHost {
       sourceFile: ts.SourceFile, program: ts.Program, fileName: string,
       languageVersion: ts.ScriptTarget, downlevelDecorators: boolean): ts.SourceFile {
     this.tsickleSourceMaps.set(
-        this.getSourceMapKeyForSourceFile(sourceFile), new SourceMapGenerator());
+        this.getSourceFileKeyForSourceFile(sourceFile), new SourceMapGenerator());
     const isDefinitions = isDtsFileName(fileName);
     // Don't tsickle-process any d.ts that isn't a compilation target;
     // this means we don't process e.g. lib.d.ts.
@@ -342,7 +413,7 @@ export class TsickleCompilerHost implements ts.CompilerHost {
     }
     this.diagnostics.push(...diagnostics);
     this.tsickleSourceMaps.set(
-        this.getSourceMapKeyForSourceFile(sourceFile), sourceMapper.sourceMap);
+        this.getSourceFileKeyForSourceFile(sourceFile), sourceMapper.sourceMap);
     return ts.createSourceFile(fileName, annotated.output, languageVersion, true);
   }
 

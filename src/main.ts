@@ -137,6 +137,7 @@ function getDefaultClosureJSOptions(fileNames: string[], settings: Settings): Cl
       googmodule: true,
       es5Mode: false,
       untyped: !settings.isTyped,
+      sourceMapSanityCheck: true,
     },
     tsickleHost: {
       shouldSkipTsickleProcessing: (fileName) => fileNames.indexOf(fileName) === -1,
