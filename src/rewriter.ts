@@ -77,7 +77,7 @@ export abstract class Rewriter {
       // from the previous node.  TODO: don't skip anything here if
       // there wasn't any comment.
       if (newLineIfCommentsStripped && node.getFullStart() < node.getStart()) {
-        this.emit('\n');
+        this.emit('\n', node);
       }
       pos = node.getStart();
     }
@@ -116,19 +116,26 @@ export abstract class Rewriter {
     // section preceding it. That's arguably incorrect (e.g. for the fake
     // methods defining properties), but is good enough for stack traces.
     const pos = this.file.getLineAndCharacterOfPosition(from);
-    this.sourceMapper.addMapping(
-        node, {line: pos.line, column: pos.character, position: from}, this.position, to - from);
+    const originalSourcePosition = {line: pos.line, column: pos.character, position: from};
     // getSourceFile().getText() is wrong here because it has the text of
     // the SourceFile node of the AST, which doesn't contain the comments
     // preceding that node.  Semantically these ranges are just offsets
     // into the original source file text, so slice from that.
     const text = this.file.text.slice(from, to);
     if (text) {
-      this.emit(text);
+      this.emit(text, node, originalSourcePosition);
     }
   }
 
-  emit(str: string) {
+  emit(str: string, node?: ts.Node, original?: SourcePosition) {
+    if (node) {
+      if (!original) {
+        const nodeStart = node.getStart();
+        const pos = this.file.getLineAndCharacterOfPosition(node.getStart());
+        original = {line: pos.line, column: pos.character, position: nodeStart};
+      }
+      this.sourceMapper.addMapping(node, original, this.position, str.length);
+    }
     this.output.push(str);
     for (const c of str) {
       this.position.column++;

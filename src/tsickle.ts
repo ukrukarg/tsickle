@@ -366,7 +366,7 @@ class ClosureRewriter extends Rewriter {
       newDoc.push(jsdoc.merge(returnTags));
     }
 
-    this.emit('\n' + jsdoc.toString(newDoc));
+    this.emit('\n' + jsdoc.toString(newDoc), fnDecls[0]);
     return newDoc.filter(t => t.tagName === 'param').map(t => t.parameterName!);
   }
 
@@ -406,7 +406,7 @@ class ClosureRewriter extends Rewriter {
       text: decl.typeParameters
                 .map(tp => {
                   if (tp.constraint) {
-                    this.emit('\n// unsupported: template constraints.');
+                    this.emit('\n// unsupported: template constraints.', decl);
                   }
                   return getIdentifierText(tp.name);
                 })
@@ -479,11 +479,11 @@ class ClosureRewriter extends Rewriter {
 
   /** Emits a type annotation in JSDoc, or {?} if the type is unavailable. */
   emitJSDocType(node: ts.Node, additionalDocTag?: string, type?: ts.Type) {
-    this.emit(' /**');
+    this.emit(' /**', node);
     if (additionalDocTag) {
-      this.emit(' ' + additionalDocTag);
+      this.emit(' ' + additionalDocTag, node);
     }
-    this.emit(` @type {${this.typeToClosure(node, type)}} */`);
+    this.emit(` @type {${this.typeToClosure(node, type)}} */`, node);
   }
 
   /**
@@ -616,13 +616,13 @@ class Annotator extends ClosureRewriter {
         // "exports." access, to maintain mutable ES6 exports semantics. Indirecting through the
         // window object means we reference the correct global symbol. Closure Compiler does
         // understand that "var foo" in externs corresponds to "window.foo".
-        this.emit(`\nexports.${declName} = window.${declName};\n`);
+        this.emit(`\nexports.${declName} = window.${declName};\n`, node);
       } else if (!isValue) {
         // Non-value objects do not exist at runtime, so we cannot access the symbol (it only
         // exists in externs). Export them as a typedef, which forwards to the type in externs.
-        this.emit(`\n/** @typedef {${declName}} */\nexports.${declName};\n`);
+        this.emit(`\n/** @typedef {${declName}} */\nexports.${declName};\n`, node);
       } else {
-        this.emit(`\nexports.${declName} = ${declName};\n`);
+        this.emit(`\nexports.${declName} = ${declName};\n`, node);
       }
     }
   }
@@ -655,7 +655,7 @@ class Annotator extends ClosureRewriter {
       case ts.SyntaxKind.ExportDeclaration:
         const exportDecl = node as ts.ExportDeclaration;
         this.writeRange(node, node.getFullStart(), node.getStart());
-        this.emit('export');
+        this.emit('export', node);
         let exportedSymbols: NamedSymbol[] = [];
         if (!exportDecl.exportClause && exportDecl.moduleSpecifier) {
           // It's an "export * from ..." statement.
@@ -663,7 +663,7 @@ class Annotator extends ClosureRewriter {
           exportedSymbols = this.expandSymbolsFromExportStar(exportDecl);
           const exportSymbolsToEmit =
               exportedSymbols.filter(s => this.shouldEmitExportSymbol(s.sym));
-          this.emit(` {${exportSymbolsToEmit.map(e => unescapeName(e.name)).join(',')}}`);
+          this.emit(` {${exportSymbolsToEmit.map(e => unescapeName(e.name)).join(',')}}`, node);
         } else {
           if (exportDecl.exportClause) {
             exportedSymbols = this.getNamedSymbols(exportDecl.exportClause.elements);
@@ -671,17 +671,17 @@ class Annotator extends ClosureRewriter {
           }
         }
         if (exportDecl.moduleSpecifier) {
-          this.emit(` from '${this.resolveModuleSpecifier(exportDecl.moduleSpecifier)}';`);
+          this.emit(` from '${this.resolveModuleSpecifier(exportDecl.moduleSpecifier)}';`, node);
         } else {
           // export {...};
-          this.emit(';');
+          this.emit(';', node);
         }
         this.writeRange(node, node.getEnd(), node.getEnd());
         if (exportDecl.moduleSpecifier) {
           this.forwardDeclare(exportDecl.moduleSpecifier, exportedSymbols);
         }
         if (exportedSymbols.length) {
-          this.emitTypeDefExports(exportedSymbols);
+          this.emitTypeDefExports(exportedSymbols, exportDecl);
         }
         return true;
       case ts.SyntaxKind.InterfaceDeclaration:
@@ -768,7 +768,7 @@ class Annotator extends ClosureRewriter {
         // closure requires another pair of parens, otherwise it will
         // complain with "Misplaced type annotation. Type annotations are not allowed here."
         if (this.templateSpanStackCount > 0) {
-          this.emit('(');
+          this.emit('(', node);
         }
         this.emitJSDocType(typeAssertion);
         // When TypeScript emits JS, it removes one layer of "redundant"
@@ -778,11 +778,11 @@ class Annotator extends ClosureRewriter {
         // TODO: in the non transformer version, the comment is currently dropped
         //  alltegether from pure assignments due to
         //  https://github.com/Microsoft/TypeScript/issues/9873.
-        this.emit('((');
+        this.emit('((', node);
         this.writeNode(node);
-        this.emit('))');
+        this.emit('))', node);
         if (this.templateSpanStackCount > 0) {
-          this.emit(')');
+          this.emit(')', node);
         }
         return true;
       case ts.SyntaxKind.NonNullExpression:
@@ -799,15 +799,15 @@ class Annotator extends ClosureRewriter {
         }
         // See comment above.
         if (this.templateSpanStackCount > 0) {
-          this.emit('(');
+          this.emit('(', node);
         }
         this.emitJSDocType(nnexpr, undefined, type);
         // See comment above.
-        this.emit('((');
+        this.emit('((', node);
         this.writeNode(nnexpr.expression);
-        this.emit('))');
+        this.emit('))', node);
         if (this.templateSpanStackCount > 0) {
-          this.emit(')');
+          this.emit(')', node);
         }
         return true;
       case ts.SyntaxKind.PropertyDeclaration:
@@ -818,8 +818,8 @@ class Annotator extends ClosureRewriter {
         }
 
         if (docTags.length > 0 && node.getFirstToken()) {
-          this.emit('\n');
-          this.emit(jsdoc.toString(docTags));
+          this.emit('\n', node);
+          this.emit(jsdoc.toString(docTags), node);
           const isPolymerBehavior = docTags.some(t => t.tagName === 'polymerBehavior');
           if (isPolymerBehavior) {
             this.polymerBehaviorStackCount++;
@@ -888,9 +888,9 @@ class Annotator extends ClosureRewriter {
                 ` has a string index type but is accessed using dotted access. ` +
                 `Quoting the access.`);
         this.writeNode(pae.expression);
-        this.emit('["');
+        this.emit('["', node);
         this.writeNode(pae.name);
-        this.emit('"]');
+        this.emit('"]', node);
         return true;
       case ts.SyntaxKind.Decorator:
         if (this.currentDecoratorConverter) {
@@ -951,8 +951,8 @@ class Annotator extends ClosureRewriter {
       this.emit(jsdoc.toString([
         {tagName: 'fileoverview', text: 'added by tsickle'},
         {tagName: 'suppress', type: 'checkTypes', text: 'checked by tsc'},
-      ]));
-      this.emit('\n');
+      ]), sf);
+      this.emit('\n', sf);
       return sf.getFullStart();
     }
     const comment = comments[fileoverviewIdx];
@@ -980,9 +980,9 @@ class Annotator extends ClosureRewriter {
         text: 'checked by tsc',
       });
     }
-    this.emit(jsdoc.toString(tags));
+    this.emit(jsdoc.toString(tags), sf);
     if (sf.getFullText().substring(comment.end, comment.end + 2) !== '\n\n') {
-      this.emit('\n\n');  // separate from file body to avoid being dropped by tsc.
+      this.emit('\n\n', sf);  // separate from file body to avoid being dropped by tsc.
     }
     return comment.end;
   }
@@ -1040,7 +1040,7 @@ class Annotator extends ClosureRewriter {
    * pure typedefs, tsickle only generates a property access with a JSDoc comment, so they need to
    * be exported explicitly here.
    */
-  private emitTypeDefExports(exports: NamedSymbol[]) {
+  private emitTypeDefExports(exports: NamedSymbol[], decl: ts.ExportDeclaration) {
     if (this.options.untyped) return;
     for (const exp of exports) {
       if (exp.sym.flags & ts.SymbolFlags.Alias)
@@ -1054,7 +1054,7 @@ class Annotator extends ClosureRewriter {
       }
       if (!isTypeAlias) continue;
       const typeName = this.symbolsToAliasedNames.get(exp.sym) || exp.sym.name;
-      this.emit(`\n/** @typedef {${typeName}} */\nexports.${exp.name}; // re-export typedef`);
+      this.emit(`\n/** @typedef {${typeName}} */\nexports.${exp.name}; // re-export typedef`, decl);
     }
   }
 
@@ -1097,12 +1097,12 @@ class Annotator extends ClosureRewriter {
    */
   private emitImportDeclaration(decl: ts.ImportDeclaration): boolean {
     this.writeRange(decl, decl.getFullStart(), decl.getStart());
-    this.emit('import');
+    this.emit('import', decl);
     const importPath = this.resolveModuleSpecifier(decl.moduleSpecifier);
     const importClause = decl.importClause;
     if (!importClause) {
       // import './foo';
-      this.emit(`'${importPath}';`);
+      this.emit(`'${importPath}';`, decl);
       this.writeRange(decl, decl.getEnd(), decl.getEnd());
       return true;
     } else if (
@@ -1110,7 +1110,7 @@ class Annotator extends ClosureRewriter {
         (importClause.namedBindings &&
          importClause.namedBindings.kind === ts.SyntaxKind.NamedImports)) {
       this.visit(importClause);
-      this.emit(` from '${importPath}';`);
+      this.emit(` from '${importPath}';`, decl);
       this.writeRange(decl, decl.getEnd(), decl.getEnd());
 
       // importClause.name implies
@@ -1149,7 +1149,7 @@ class Annotator extends ClosureRewriter {
         importClause.namedBindings.kind === ts.SyntaxKind.NamespaceImport) {
       // import * as foo from ...;
       this.visit(importClause);
-      this.emit(` from '${importPath}';`);
+      this.emit(` from '${importPath}';`, decl);
       this.writeRange(decl, decl.getEnd(), decl.getEnd());
       return true;
     } else {
@@ -1229,7 +1229,7 @@ class Annotator extends ClosureRewriter {
     // here would cause a change in load order, which is observable (and can lead to errors).
     // Instead, goog.forwardDeclare types, which allows using them in type annotations without
     // causing a load. See below for the exception to the rule.
-    this.emit(`\nconst ${forwardDeclarePrefix} = goog.forwardDeclare("${moduleNamespace}");`);
+    this.emit(`\nconst ${forwardDeclarePrefix} = goog.forwardDeclare("${moduleNamespace}");`, specifier);
     const hasValues = exports.some(e => (e.flags & ts.SymbolFlags.Value) !== 0);
     if (!hasValues) {
       // Closure Compiler's toolchain will drop files that are never goog.require'd *before* type
@@ -1242,7 +1242,7 @@ class Annotator extends ClosureRewriter {
       // This is a heuristic - if the module exports some values, but those are never imported,
       // the file will still end up not being imported. Hopefully modules that export values are
       // imported for their value in some place.
-      this.emit(`\ngoog.require("${moduleNamespace}"); // force type-only module to be loaded`);
+      this.emit(`\ngoog.require("${moduleNamespace}"); // force type-only module to be loaded`, specifier);
     }
     for (const exp of exportedSymbols) {
       if (exp.sym.flags & ts.SymbolFlags.Alias)
@@ -1272,8 +1272,8 @@ class Annotator extends ClosureRewriter {
       this.maybeAddHeritageClauses(docTags, classDecl);
     }
 
-    this.emit('\n');
-    if (docTags.length > 0) this.emit(jsdoc.toString(docTags));
+    this.emit('\n', classDecl);
+    if (docTags.length > 0) this.emit(jsdoc.toString(docTags), classDecl);
     visitClassContentIncludingDecorators(classDecl, this, this.currentDecoratorConverter);
     this.emitTypeAnnotationsHelper(classDecl);
 
@@ -1294,12 +1294,12 @@ class Annotator extends ClosureRewriter {
       this.maybeAddHeritageClauses(docTags, iface);
     }
 
-    this.emit('\n');
-    this.emit(jsdoc.toString(docTags));
+    this.emit('\n', iface);
+    this.emit(jsdoc.toString(docTags), iface);
 
-    if (hasModifierFlag(iface, ts.ModifierFlags.Export)) this.emit('export ');
+    if (hasModifierFlag(iface, ts.ModifierFlags.Export)) this.emit('export ', iface);
     const name = getIdentifierText(iface.name);
-    this.emit(`function ${name}() {}\n`);
+    this.emit(`function ${name}() {}\n`, iface);
 
     this.emit(`\n\nfunction ${name}_tsickle_Closure_declarations() {\n`);
     const memberNamespace = [name, 'prototype'];
@@ -1360,7 +1360,7 @@ class Annotator extends ClosureRewriter {
     if (!classDecl.name) return;
     const className = getIdentifierText(classDecl.name);
 
-    this.emit(`\n\nfunction ${className}_tsickle_Closure_declarations() {\n`);
+    this.emit(`\n\nfunction ${className}_tsickle_Closure_declarations() {\n`, classDecl);
     if (this.currentDecoratorConverter) {
       this.currentDecoratorConverter.emitMetadataTypeAnnotationsHelpers();
     }
@@ -1378,10 +1378,10 @@ class Annotator extends ClosureRewriter {
       const tags = hasExportingDecorator(fnDecl, this.typeChecker) ? [{tagName: 'export'}] : [];
       const paramNames = this.emitFunctionType([fnDecl], tags);
       // memberNamespace because abstract methods cannot be static in TypeScript.
-      this.emit(`${memberNamespace.join('.')}.${name} = function(${paramNames.join(', ')}) {};\n`);
+      this.emit(`${memberNamespace.join('.')}.${name} = function(${paramNames.join(', ')}) {};\n`, classDecl);
     }
 
-    this.emit(`}\n`);
+    this.emit(`}\n`, classDecl);
   }
 
   private propertyName(prop: ts.Declaration): string|null {
@@ -1407,7 +1407,7 @@ class Annotator extends ClosureRewriter {
   private visitProperty(namespace: string[], prop: ts.Declaration, optional = false) {
     const name = this.propertyName(prop);
     if (!name) {
-      this.emit(`/* TODO: handle strange member:\n${this.escapeForComment(prop.getText())}\n*/\n`);
+      this.emit(`/* TODO: handle strange member:\n${this.escapeForComment(prop.getText())}\n*/\n`, prop);
       return;
     }
 
@@ -1430,9 +1430,9 @@ class Annotator extends ClosureRewriter {
     tags.push({tagName: 'type', type});
     // Avoid printing annotations that can conflict with @type
     // This avoids Closure's error "type annotation incompatible with other annotations"
-    this.emit(jsdoc.toString(tags, new Set(['param', 'return'])));
+    this.emit(jsdoc.toString(tags, new Set(['param', 'return'])), prop);
     namespace = namespace.concat([name]);
-    this.emit(`${namespace.join('.')};\n`);
+    this.emit(`${namespace.join('.')};\n`, prop);
   }
 
   private visitTypeAlias(node: ts.TypeAliasDeclaration) {
@@ -1448,13 +1448,13 @@ class Annotator extends ClosureRewriter {
     // TypeScript drops exports that are never assigned to (and Closure
     // requires us to not assign to typedef exports).  Instead, emit the
     // "exports.foo;" line directly in that case.
-    this.emit(`\n/** @typedef {${this.typeToClosure(node)}} */\n`);
+    this.emit(`\n/** @typedef {${this.typeToClosure(node)}} */\n`, node);
     if (hasModifierFlag(node, ts.ModifierFlags.Export)) {
-      this.emit('exports.');
+      this.emit('exports.', node);
     } else {
-      this.emit('var ');
+      this.emit('var ', node);
     }
-    this.emit(`${node.name.getText()};\n`);
+    this.emit(`${node.name.getText()};\n`, node);
   }
 
   /**
@@ -1514,7 +1514,7 @@ class Annotator extends ClosureRewriter {
       const value = members.get(member)!;
       this.emit(`${member}: `);
       if (typeof value === 'number') {
-        this.emit(value.toString());
+        this.emit(value.toString(), node);
       } else {
         // Values can be initialized to expressions.
         this.visit(value);
@@ -1536,7 +1536,7 @@ class Annotator extends ClosureRewriter {
 
     // Emit foo[foo.BAR] = 'BAR'; lines.
     for (const member of toArray(members.keys())) {
-      this.emit(`${name}[${name}.${member}] = "${member}";\n`);
+      this.emit(`${name}[${name}.${member}] = "${member}";\n`, node);
     }
   }
 }
@@ -1575,8 +1575,8 @@ class ExternsWriter extends ClosureRewriter {
               namespace = [];
             } else {
               if (this.isFirstDeclaration(decl)) {
-                this.emit('/** @const */\n');
-                this.writeExternsVariable(name, namespace, '{}');
+                this.emit('/** @const */\n', node);
+                this.writeExternsVariable(node, name, namespace, '{}');
               }
               namespace = namespace.concat(name);
             }
@@ -1591,20 +1591,20 @@ class ExternsWriter extends ClosureRewriter {
             // and emit into a fake namespace.
 
             // Declare the top-level "tsickle_declare_module".
-            this.emit('/** @const */\n');
-            this.writeExternsVariable('tsickle_declare_module', [], '{}');
+            this.emit('/** @const */\n', node);
+            this.writeExternsVariable(node, 'tsickle_declare_module', [], '{}');
             namespace = ['tsickle_declare_module'];
 
             // Declare the inner "tsickle_declare_module.foo", if it's not
             // declared already elsewhere.
             let importName = (decl.name as ts.StringLiteral).text;
-            this.emit(`// Derived from: declare module "${importName}"\n`);
+            this.emit(`// Derived from: declare module "${importName}"\n`, node);
             // We also don't care about the actual name of the module ("foo"
             // in the above example), except that we want it to not conflict.
             importName = importName.replace(/_/, '__').replace(/[^A-Za-z]/g, '_');
             if (this.isFirstDeclaration(decl)) {
-              this.emit('/** @const */\n');
-              this.writeExternsVariable(importName, namespace, '{}');
+              this.emit('/** @const */\n', node);
+              this.writeExternsVariable(node, importName, namespace, '{}');
             }
 
             // Declare the contents inside the "tsickle_declare_module.foo".
@@ -1652,7 +1652,7 @@ class ExternsWriter extends ClosureRewriter {
         this.writeExternsTypeAlias(node as ts.TypeAliasDeclaration, namespace);
         break;
       default:
-        this.emit(`\n/* TODO: ${ts.SyntaxKind[node.kind]} in ${namespace.join('.')} */\n`);
+        this.emit(`\n/* TODO: ${ts.SyntaxKind[node.kind]} in ${namespace.join('.')} */\n`, node);
         break;
     }
   }
@@ -1705,7 +1705,7 @@ class ExternsWriter extends ClosureRewriter {
         jsdocTags.push({tagName: 'record'});
         jsdocTags.push({tagName: 'struct'});
       }
-      if (writeJsDoc) this.emit(jsdoc.toString(jsdocTags));
+      if (writeJsDoc) this.emit(jsdoc.toString(jsdocTags), decl);
       this.writeExternsFunction(name, paramNames, namespace);
     }
 
@@ -1719,9 +1719,9 @@ class ExternsWriter extends ClosureRewriter {
           if (prop.name.kind === ts.SyntaxKind.Identifier) {
             this.emitJSDocType(prop);
             if (hasModifierFlag(prop, ts.ModifierFlags.Static)) {
-              this.emit(`\n${typeName}.${prop.name.getText()};\n`);
+              this.emit(`\n${typeName}.${prop.name.getText()};\n`, decl);
             } else {
-              this.emit(`\n${typeName}.prototype.${prop.name.getText()};\n`);
+              this.emit(`\n${typeName}.prototype.${prop.name.getText()};\n`, decl);
             }
             continue;
           }
@@ -1753,7 +1753,7 @@ class ExternsWriter extends ClosureRewriter {
       if (member.name) {
         memberName = memberName.concat([member.name.getText()]);
       }
-      this.emit(`\n/* TODO: ${ts.SyntaxKind[member.kind]}: ${memberName.join('.')} */\n`);
+      this.emit(`\n/* TODO: ${ts.SyntaxKind[member.kind]}: ${memberName.join('.')} */\n`, decl);
     }
 
     // Handle method declarations/signatures separately, since we need to deal with overloads.
@@ -1779,19 +1779,19 @@ class ExternsWriter extends ClosureRewriter {
       const name = getIdentifierText(decl.name as ts.Identifier);
       if (closureExternsBlacklist.indexOf(name) >= 0) return;
       this.emitJSDocType(decl);
-      this.emit('\n');
-      this.writeExternsVariable(name, namespace);
+      this.emit('\n', decl);
+      this.writeExternsVariable(decl, name, namespace);
     } else {
       this.errorUnimplementedKind(decl.name, 'externs for variable');
     }
   }
 
-  private writeExternsVariable(name: string, namespace: string[], value?: string) {
+  private writeExternsVariable(decl: ts.Node, name: string, namespace: string[], value?: string) {
     const qualifiedName = namespace.concat([name]).join('.');
-    if (namespace.length === 0) this.emit(`var `);
-    this.emit(qualifiedName);
-    if (value) this.emit(` = ${value}`);
-    this.emit(';\n');
+    if (namespace.length === 0) this.emit(`var `, decl);
+    this.emit(qualifiedName, decl);
+    if (value) this.emit(` = ${value}`, decl);
+    this.emit(';\n', decl);
   }
 
   private writeExternsFunction(name: ts.Node, params: string[], namespace: string[]) {
@@ -1802,19 +1802,19 @@ class ExternsWriter extends ClosureRewriter {
         fqn += '.';  // computed names include [ ] in their getText() representation.
       }
       fqn += name.getText();
-      this.emit(`${fqn} = function(${paramsStr}) {};\n`);
+      this.emit(`${fqn} = function(${paramsStr}) {};\n`, name);
     } else {
       if (name.kind !== ts.SyntaxKind.Identifier) {
         this.error(name, 'Non-namespaced computed name in externs');
       }
-      this.emit(`function ${name.getText()}(${paramsStr}) {}\n`);
+      this.emit(`function ${name.getText()}(${paramsStr}) {}\n`, name);
     }
   }
 
   private writeExternsEnum(decl: ts.EnumDeclaration, namespace: string[]) {
     const name = getIdentifierText(decl.name);
-    this.emit('\n/** @const */\n');
-    this.writeExternsVariable(name, namespace, '{}');
+    this.emit('\n/** @const */\n', decl);
+    this.writeExternsVariable(decl, name, namespace, '{}');
     namespace = namespace.concat([name]);
     for (const member of decl.members) {
       let memberName: string|undefined;
@@ -1830,17 +1830,17 @@ class ExternsWriter extends ClosureRewriter {
           break;
       }
       if (!memberName) {
-        this.emit(`\n/* TODO: ${ts.SyntaxKind[member.name.kind]}: ${member.name.getText()} */\n`);
+        this.emit(`\n/* TODO: ${ts.SyntaxKind[member.name.kind]}: ${member.name.getText()} */\n`, decl);
         continue;
       }
-      this.emit('/** @const {number} */\n');
-      this.writeExternsVariable(memberName, namespace);
+      this.emit('/** @const {number} */\n', decl);
+      this.writeExternsVariable(decl, memberName, namespace);
     }
   }
 
   private writeExternsTypeAlias(decl: ts.TypeAliasDeclaration, namespace: string[]) {
-    this.emit(`\n/** @typedef {${this.typeToClosure(decl)}} */\n`);
-    this.writeExternsVariable(getIdentifierText(decl.name), namespace);
+    this.emit(`\n/** @typedef {${this.typeToClosure(decl)}} */\n`, decl);
+    this.writeExternsVariable(decl, getIdentifierText(decl.name), namespace);
   }
 }
 

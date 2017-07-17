@@ -25,12 +25,12 @@ import * as testSupport from './test_support';
 describe('source maps with TsickleCompilerHost', () => {
   createTests(false);
 });
-describe('source maps with transformer', () => {
-  createTests(true);
-});
+// describe('source maps with transformer', () => {
+//   createTests(true);
+// });
 
 function createTests(useTransformer: boolean) {
-  it('composes source maps with tsc', () => {
+  it.only('composes source maps with tsc', () => {
     const sources = new Map<string, string>();
     sources.set('input.ts', `
       class X { field: number; }
@@ -40,6 +40,8 @@ function createTests(useTransformer: boolean) {
 
     // Run tsickle+TSC to convert inputs to Closure JS files.
     const {compiledJS, sourceMap} = compile(sources, {useTransformer});
+    console.log(compiledJS);
+    sourceMap.eachMapping((m) => console.log(JSON.stringify(m)));
 
     {
       const {line, column} = getLineAndColumn(compiledJS, 'a string');
