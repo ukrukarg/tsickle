@@ -271,61 +271,61 @@ export class TsickleCompilerHost implements ts.CompilerHost {
     }
 
     // Sanity check against the original file
-    if (this.options.sourceMapSanityCheck) {
-      const tsicklePlusTscSourceMap =
-          sourceMapUtils.sourceMapGeneratorToConsumer(tscSourceMapGenerator);
-      tsicklePlusTscSourceMap.eachMapping((mapping) => {
-        const sourceFileKey = this.getSourceFileKeyForPathAndName(filePath, mapping.source);
-        const sourceFile = this.originalSourceFileMap.get(sourceFileKey)!;
-        const lineStarts = sourceFile.getLineStarts();
-        // Check that it's on a line that exists in the source file
-        if (mapping.originalLine > lineStarts.length) {
-          console.log(
-              `Line ${mapping.originalLine} is beyond the last line, ${
-                                                                       lineStarts.length
-                                                                     } of ${mapping.source}`);
-          return;
-        }
+  //   if (this.options.sourceMapSanityCheck) {
+  //     const tsicklePlusTscSourceMap =
+  //         sourceMapUtils.sourceMapGeneratorToConsumer(tscSourceMapGenerator);
+  //     tsicklePlusTscSourceMap.eachMapping((mapping) => {
+  //       const sourceFileKey = this.getSourceFileKeyForPathAndName(filePath, mapping.source);
+  //       const sourceFile = this.originalSourceFileMap.get(sourceFileKey)!;
+  //       const lineStarts = sourceFile.getLineStarts();
+  //       // Check that it's on a line that exists in the source file
+  //       if (mapping.originalLine > lineStarts.length) {
+  //         console.log(
+  //             `Line ${mapping.originalLine} is beyond the last line, ${
+  //                                                                      lineStarts.length
+  //                                                                    } of ${mapping.source}`);
+  //         return;
+  //       }
 
-        // Check that the column isn't off the end of the line
-        const position = lineStarts[mapping.originalLine - 1] + mapping.originalColumn;
-        if (mapping.originalLine < lineStarts.length &&
-            position >= lineStarts[mapping.originalLine]) {
-          console.log(
-              `Line ${
-                      mapping.originalLine
-                    }, Column ${
-                                mapping.originalColumn
-                              } isn't on line ${
-                                                mapping.originalLine
-                                              } of ${
-                                                     mapping.source
-                                                   } which only has ${
-                                                                      lineStarts
-                                                                          [mapping.originalLine] -
-                                                                      lineStarts
-                                                                          [mapping.originalLine - 1]
-                                                                    } columns`);
-          return;
-        } else if (position > sourceFile.end) {
-          console.log(
-              `Line ${
-                      mapping.originalLine
-                    }, Column ${
-                                mapping.originalColumn
-                              } isn't on line ${
-                                                mapping.originalLine
-                                              } of ${
-                                                     mapping.source
-                                                   } which only has ${
-                                                                      sourceFile.end -
-                                                                      lineStarts
-                                                                          [mapping.originalLine - 1]
-                                                                    } columns`);
-          return;
-        }
-      }, this);
-    }
+  //       // Check that the column isn't off the end of the line
+  //       const position = lineStarts[mapping.originalLine - 1] + mapping.originalColumn;
+  //       if (mapping.originalLine < lineStarts.length &&
+  //           position >= lineStarts[mapping.originalLine]) {
+  //         console.log(
+  //             `Line ${
+  //                     mapping.originalLine
+  //                   }, Column ${
+  //                               mapping.originalColumn
+  //                             } isn't on line ${
+  //                                               mapping.originalLine
+  //                                             } of ${
+  //                                                    mapping.source
+  //                                                  } which only has ${
+  //                                                                     lineStarts
+  //                                                                         [mapping.originalLine] -
+  //                                                                     lineStarts
+  //                                                                         [mapping.originalLine - 1]
+  //                                                                   } columns`);
+  //         return;
+  //       } else if (position > sourceFile.end) {
+  //         console.log(
+  //             `Line ${
+  //                     mapping.originalLine
+  //                   }, Column ${
+  //                               mapping.originalColumn
+  //                             } isn't on line ${
+  //                                               mapping.originalLine
+  //                                             } of ${
+  //                                                    mapping.source
+  //                                                  } which only has ${
+  //                                                                     sourceFile.end -
+  //                                                                     lineStarts
+  //                                                                         [mapping.originalLine - 1]
+  //                                                                   } columns`);
+  //         return;
+  //       }
+  //     }, this);
+  //   }
 
     if (this.preexistingSourceMaps.size > 0) {
       // TODO(lucassloan): remove when the .d.ts has the correct types

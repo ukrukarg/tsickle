@@ -30,7 +30,7 @@ describe('source maps with TsickleCompilerHost', () => {
 // });
 
 function createTests(useTransformer: boolean) {
-  it.only('composes source maps with tsc', () => {
+  it('composes source maps with tsc', () => {
     const sources = new Map<string, string>();
     sources.set('input.ts', `
       class X { field: number; }
@@ -40,8 +40,6 @@ function createTests(useTransformer: boolean) {
 
     // Run tsickle+TSC to convert inputs to Closure JS files.
     const {compiledJS, sourceMap} = compile(sources, {useTransformer});
-    console.log(compiledJS);
-    sourceMap.eachMapping((m) => console.log(JSON.stringify(m)));
 
     {
       const {line, column} = getLineAndColumn(compiledJS, 'a string');
@@ -57,6 +55,31 @@ function createTests(useTransformer: boolean) {
       expect(sourceMap.originalPositionFor({line, column}).source)
           .to.equal('input.ts', 'input file name');
     }
+  });
+
+  it.only('maps both parts of the class declaration to the original code', () => {
+    const sources = new Map<string, string>();
+    sources.set('input.ts', `class X { field: number; }`);
+
+    // Run tsickle+TSC to convert inputs to Closure JS files.
+    const {compiledJS, sourceMap} = compile(sources, {useTransformer});
+    console.log(compiledJS);
+    sourceMap.eachMapping(m => console.log(JSON.stringify(m)));
+
+    {
+      const {line, column} = getLineAndColumn(compiledJS, 'X.prototype.field;');
+      expect(sourceMap.originalPositionFor({line, column}).line)
+          .to.equal(1, 'field definition');
+      expect(sourceMap.originalPositionFor({line, column}).source)
+          .to.equal('input.ts', 'input file name');
+    }
+    // {
+    //   const {line, column} = getLineAndColumn(compiledJS, 'another string');
+    //   expect(sourceMap.originalPositionFor({line, column}).line)
+    //       .to.equal(4, 'second string definition');
+    //   expect(sourceMap.originalPositionFor({line, column}).source)
+    //       .to.equal('input.ts', 'input file name');
+    // }
   });
 
   it('composes sources maps with multiple input files', () => {
