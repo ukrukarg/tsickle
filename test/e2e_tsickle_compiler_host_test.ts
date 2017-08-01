@@ -132,8 +132,8 @@ describe('tsickle compiler host', () => {
     host.getSourceFile(program.getRootFileNames()[1], ts.ScriptTarget.ES5);
 
     expect(host.diagnostics.length).to.eq(2);
-    expect(host.diagnostics[0].file.fileName).to.match(/a\.ts$/);
-    expect(host.diagnostics[1].file.fileName).to.match(/b\.ts$/);
+    expect(host.diagnostics[0].file!.fileName).to.match(/a\.ts$/);
+    expect(host.diagnostics[1].file!.fileName).to.match(/b\.ts$/);
   });
 
   it(`resets tsickle errors on reconfigure`, () => {

@@ -86,7 +86,7 @@ function compareAgainstGolden(output: string|null, path: string) {
       console.log(`Updating golden patch file for ${path} with ${patchPath}`);
       const patchOutput =
           diff.createPatch(path, golden || '', output || '', 'golden', 'tsickle with transformer')!;
-      fs.writeFileSync(patchPath, patchOutput, 'utf-8');
+      fs.writeFileSync(patchPath, patchOutput, {encoding: 'utf-8'});
     } else {
       // The desired golden state is for there to be no output file.
       // Ensure no file exists.
@@ -107,8 +107,8 @@ function compareAgainstGoldenDiagnostics(diagnostics: ts.Diagnostic[], path: str
   // Munge the filenames in the diagnostics so that they don't include
   // the tsickle checkout path.
   for (const diag of diagnostics) {
-    const fileName = diag.file.fileName;
-    diag.file.fileName = fileName.substr(fileName.indexOf('test_files'));
+    const fileName = diag.file!.fileName;
+    diag.file!.fileName = fileName.substr(fileName.indexOf('test_files'));
   }
   const tsicklePath = path.replace(/((\.d)?\.tsx?)$/, '.tsickle$1');
   expect(tsicklePath).to.not.equal(path);
@@ -116,7 +116,7 @@ function compareAgainstGoldenDiagnostics(diagnostics: ts.Diagnostic[], path: str
   const goldenFormattedDiagnostics =
       sortDiagnostics(golden.substring(0, golden.indexOf('\n====\n')));
   const outputFormattedDiagnostics = sortDiagnostics(
-      tsickle.formatDiagnostics(diagnostics.filter(diag => diag.file.fileName === path)));
+      tsickle.formatDiagnostics(diagnostics.filter(diag => diag.file!.fileName === path)));
 
   expect(outputFormattedDiagnostics).to.equal(goldenFormattedDiagnostics, '<diagnostics>');
 }

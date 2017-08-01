@@ -60,10 +60,17 @@ function InterfaceUsingConstEnum_tsickle_Closure_declarations() {
     /** @type {ConstEnum} */
     InterfaceUsingConstEnum.prototype.field2;
 }
-/** @enum {number} */
+/** @enum {?} */
 const EnumWithNonConstValues = {
     Scheme: (x => x + 1)(3),
     UserInfoRenamed: 2,
 };
 EnumWithNonConstValues[EnumWithNonConstValues.Scheme] = "Scheme";
 EnumWithNonConstValues[EnumWithNonConstValues.UserInfoRenamed] = "UserInfoRenamed";
+/** @enum {string} */
+const StringEnum = {
+    STR: 'abc',
+    OTHER_STR: 'xyz',
+};
+StringEnum[StringEnum.STR] = "STR";
+StringEnum[StringEnum.OTHER_STR] = "OTHER_STR";

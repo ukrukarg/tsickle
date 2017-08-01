@@ -55,3 +55,8 @@ enum EnumWithNonConstValues {
   Scheme = (x => x + 1)(3),
   UserInfoRenamed = ComponentIndex.UserInfo,
 }
+
+enum StringEnum {
+  STR = 'abc',
+  OTHER_STR = 'xyz',
+}

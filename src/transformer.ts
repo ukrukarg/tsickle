@@ -75,7 +75,7 @@ export function emitWithTsickle(
     program: ts.Program, host: TransformerHost, options: TransformerOptions,
     tsHost: ts.CompilerHost, tsOptions: ts.CompilerOptions, targetSourceFile?: ts.SourceFile,
     writeFile?: ts.WriteFileCallback, cancellationToken?: ts.CancellationToken,
-    emitOnlyDtsFiles?: boolean, customTransformers?: EmitTransformers): EmitResult {
+    emitOnlyDtsFiles?: boolean, emitTransformers?: EmitTransformers): EmitResult {
   let tsickleDiagnostics: ts.Diagnostic[] = [];
   const typeChecker = program.getTypeChecker();
   const beforeTsTransformers: Array<ts.TransformerFactory<ts.SourceFile>> = [];
@@ -83,9 +83,8 @@ export function emitWithTsickle(
   if (options.transformTypesToClosure) {
     // Note: tsickle.annotate can also lower decorators in the same run.
     beforeTsTransformers.push(createTransformerFromSourceMap((sourceFile, sourceMapper) => {
-      const tisckleOptions: tsickle.Options = {...options, filterTypesForExport: true};
       const {output, diagnostics} = tsickle.annotate(
-          typeChecker, sourceFile, host, tisckleOptions, tsHost, tsOptions, sourceMapper,
+          typeChecker, sourceFile, host, options, tsHost, tsOptions, sourceMapper,
           tsickle.AnnotatorFeatures.Transformer);
       tsickleDiagnostics.push(...diagnostics);
       return output;
@@ -105,19 +104,19 @@ export function emitWithTsickle(
   // }));
   // add user supplied transformers
   const afterTsTransformers: Array<ts.TransformerFactory<ts.SourceFile>> = [];
-  if (customTransformers) {
-    if (customTransformers.beforeTsickle) {
-      beforeTsTransformers.unshift(...customTransformers.beforeTsickle);
+  if (emitTransformers) {
+    if (emitTransformers.beforeTsickle) {
+      beforeTsTransformers.unshift(...emitTransformers.beforeTsickle);
     }
 
-    if (customTransformers.beforeTs) {
-      beforeTsTransformers.push(...customTransformers.beforeTs);
+    if (emitTransformers.beforeTs) {
+      beforeTsTransformers.push(...emitTransformers.beforeTs);
     }
-    if (customTransformers.afterTs) {
-      afterTsTransformers.push(...customTransformers.afterTs);
+    if (emitTransformers.afterTs) {
+      afterTsTransformers.push(...emitTransformers.afterTs);
     }
   }
-  customTransformers = createCustomTransformers({
+  const customTransformers = createCustomTransformers({
     before: beforeTsTransformers.map(tf => skipTransformForSourceFileIfNeeded(host, tf)),
     after: afterTsTransformers.map(tf => skipTransformForSourceFileIfNeeded(host, tf))
   });
@@ -166,7 +165,7 @@ export function emitWithTsickle(
   // warns and then fixes up the code to be Closure-compatible anyway.
   tsickleDiagnostics = tsickleDiagnostics.filter(
       d => d.category === ts.DiagnosticCategory.Error ||
-          !host.shouldIgnoreWarningsForPath(d.file.fileName));
+          (!d.file || !host.shouldIgnoreWarningsForPath(d.file.fileName)));
 
   return {
     modulesManifest,

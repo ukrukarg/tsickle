@@ -56,7 +56,7 @@ function compareAgainstGolden(output: string|null, path: string) {
   if (UPDATE_GOLDENS && output !== golden) {
     console.log('Updating golden file for', path);
     if (output !== null) {
-      fs.writeFileSync(path, output, 'utf-8');
+      fs.writeFileSync(path, output, {encoding: 'utf-8'});
     } else {
       // The desired golden state is for there to be no output file.
       // Ensure no file exists.
