@@ -23,8 +23,15 @@ export function createTransformerFromSourceMap(
     const sourceMapper = new NodeSourceMapper();
     const newFile = ts.createSourceFile(
         sourceFile.fileName, operator(sourceFile, sourceMapper), ts.ScriptTarget.Latest, true);
-    const mappedFile = visitNode(newFile);
-    return updateSourceFileNode(sourceFile, mappedFile.statements);
+              if (sourceFile.fileName === 'test_files/export_types_values.untyped/importer.ts') {
+    sourceMapper.originalNodeByGeneratedRange.forEach((v, k) => console.log(`${k} ${ts.SyntaxKind[v.kind]}`));
+              }
+      // console.log(newFile.getText());
+        const mappedFile = visitNode(newFile);
+    const thingy = updateSourceFileNode(sourceFile, mappedFile.statements);
+    // console.log(sourceFile.fileName);
+    // console.log(thingy.getText());
+    return thingy;
 
     function visitNode<T extends ts.Node>(node: T): T {
       return visitNodeWithSynthesizedComments(context, newFile, node, visitNodeImpl) as T;
@@ -35,6 +42,15 @@ export function createTransformerFromSourceMap(
         return node;
       }
       const originalNode = sourceMapper.getOriginalNode(node);
+
+      // if (node.kind === ts.SyntaxKind.ExportKeyword) {
+      //   console.log(node.getText());
+      //   console.log(originalNode);
+      // }
+      // if (node.kind === ts.SyntaxKind.Identifier && sourceFile.fileName === 'test_files/export_types_values.untyped/importer.ts') {
+      //   console.log(node);
+      //   console.log(originalNode === undefined);
+      // }
 
       // Use the originalNode for:
       // - literals: as e.g. typescript does not support synthetic regex literals
@@ -91,7 +107,7 @@ export function createTransformerFromSourceMap(
  * to original nodes.
  */
 class NodeSourceMapper implements SourceMapper {
-  private originalNodeByGeneratedRange = new Map<string, ts.Node>();
+  public originalNodeByGeneratedRange = new Map<string, ts.Node>();
   private genStartPositions = new Map<ts.Node, number>();
 
   private addFullNodeRange(node: ts.Node, genStartPos: number) {
@@ -108,8 +124,13 @@ class NodeSourceMapper implements SourceMapper {
     if (!originalNode) {
       return;
     }
+
+    if (originalNode.kind === ts.SyntaxKind.ExportDeclaration) {
+      console.log('Whoo-hoo!');
+    }
     let originalStartPos = original.position;
     let genStartPos = generated.position;
+    // console.log(`generated node's start position: ${genStartPos}`);
     if (originalStartPos >= originalNode.getFullStart() &&
         originalStartPos <= originalNode.getStart()) {
       // always use the node.getStart() for the index,
@@ -131,11 +152,16 @@ class NodeSourceMapper implements SourceMapper {
         this.addFullNodeRange(child, genStartPos + (child.getStart() - originalStartPos));
       }
     });
+    // console.log(`generated node's modified start position: ${genStartPos}`);
   }
 
   getOriginalNode(node: ts.Node): ts.Node|undefined {
-    return this.originalNodeByGeneratedRange.get(
-        this.nodeCacheKey(node.kind, node.getStart(), node.getEnd()));
+    const nodekey = this.nodeCacheKey(node.kind, node.getStart(), node.getEnd());
+    const originalNode = this.originalNodeByGeneratedRange.get(nodekey);
+    if (originalNode && node.getSourceFile().fileName === 'test_files/export_types_values.untyped/importer.ts') {
+      console.log(`found node ${ts.SyntaxKind[node.kind]} key: ${nodekey}`);
+    }
+    return originalNode;
   }
 
   private nodeCacheKey(kind: ts.SyntaxKind, start: number, end: number): string {

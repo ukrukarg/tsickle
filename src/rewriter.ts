@@ -141,12 +141,14 @@ export abstract class Rewriter {
     // preceding that node.  Semantically these ranges are just offsets
     // into the original source file text, so slice from that.
     const text = this.file.text.slice(from, to);
-    const pos = this.file.getLineAndCharacterOfPosition(from);
-    // Source maps are line based, so if str has leading whitespace, particularly
-    // newlines, we want to map to the start of/line of the actual text
-    const originalSourcePosition = this.findOffsetOfFirstNonWhitespaceCharacter(
-        text, {line: pos.line, column: pos.character, position: from});
-    this.emit(text, node, originalSourcePosition);
+    if (text) {
+      const pos = this.file.getLineAndCharacterOfPosition(from);
+      // Source maps are line based, so if str has leading whitespace, particularly
+      // newlines, we want to map to the start of/line of the actual text
+      const originalSourcePosition = this.findOffsetOfFirstNonWhitespaceCharacter(
+          text, {line: pos.line, column: pos.character, position: from});
+      this.emit(text, node, originalSourcePosition);
+    }
   }
 
   /**
@@ -166,11 +168,15 @@ export abstract class Rewriter {
       // a source mapping for every emit messes up the transformer
       // code path, so unless we're emitting copied text from a node, don't
       // set it
+      node = this.getCurrentNode();
       original = this.sourcePositionOfNodeStart(this.getCurrentNode());
     }
     // Source maps are line based, so if str has leading whitespace, particularly
     // newlines, we want to map to the start of/line of the actual text
     const generated = this.findOffsetOfFirstNonWhitespaceCharacter(str, this.position);
+    if (this.getCurrentNode().kind === ts.SyntaxKind.ExportDeclaration) {
+      console.log(`export declaration original: ${original.position} generated: ${generated.position}`);
+    }
     this.sourceMapper.addMapping(
         node, original, generated,
         str.length - this.findOffsetOfFirstNonWhitespaceCharacter(str).position);
