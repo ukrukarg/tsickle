@@ -12,13 +12,14 @@ import * as ts from 'typescript';
 
 import * as decorator from './decorator-annotator';
 import * as es5processor from './es5processor';
+import {transformFileoverviewComment} from './fileoverview_comment_transformer';
 import {ModulesManifest} from './modules_manifest';
 import {containsInlineSourceMap, extractInlineSourceMap, parseSourceMap, removeInlineSourceMap, setInlineSourceMap, SourceMapper, SourcePosition} from './source_map_utils';
 import {createTransformerFromSourceMap} from './transformer_sourcemap';
 import {createCustomTransformers} from './transformer_util';
 import * as tsickle from './tsickle';
 
-export interface TransformerOptions extends es5processor.Es5ProcessorOptions, tsickle.Options {
+export interface TransformerOptions extends tsickle.Options {
   /**
    * Whether to downlevel decorators
    */
@@ -83,9 +84,9 @@ export function emitWithTsickle(
   if (options.transformTypesToClosure) {
     // Note: tsickle.annotate can also lower decorators in the same run.
     beforeTsTransformers.push(createTransformerFromSourceMap((sourceFile, sourceMapper) => {
-      const tisckleOptions: tsickle.Options = {...options, filterTypesForExport: true};
+      const annotatorOptions: tsickle.AnnotatorOptions = {...options};
       const {output, diagnostics} = tsickle.annotate(
-          typeChecker, sourceFile, host, tisckleOptions, tsHost, tsOptions, sourceMapper,
+          typeChecker, sourceFile, host, annotatorOptions, tsHost, tsOptions, sourceMapper,
           tsickle.AnnotatorFeatures.Transformer);
       tsickleDiagnostics.push(...diagnostics);
       return output;
@@ -117,7 +118,8 @@ export function emitWithTsickle(
       afterTsTransformers.push(...customTransformers.afterTs);
     }
   }
-  customTransformers = createCustomTransformers({
+  beforeTsTransformers.push(transformFileoverviewComment);
+  const emitTransformers = createCustomTransformers({
     before: beforeTsTransformers.map(tf => skipTransformForSourceFileIfNeeded(host, tf)),
     after: afterTsTransformers.map(tf => skipTransformForSourceFileIfNeeded(host, tf))
   });
@@ -142,7 +144,7 @@ export function emitWithTsickle(
       };
 
   const {diagnostics: tsDiagnostics, emitSkipped, emittedFiles} = program.emit(
-      targetSourceFile, writeFileImpl, cancellationToken, emitOnlyDtsFiles, customTransformers);
+      targetSourceFile, writeFileImpl, cancellationToken, emitOnlyDtsFiles, emitTransformers);
 
   const externs: {[fileName: string]: string} = {};
   if (options.transformTypesToClosure) {

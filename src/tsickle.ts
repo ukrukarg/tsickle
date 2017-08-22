@@ -969,8 +969,9 @@ class Annotator extends ClosureRewriter {
   }
 
   private handleSourceFile(sf: ts.SourceFile) {
-    const start = this.emitSuppressChecktypes(sf);
-    this.writeNodeFrom(sf, start);
+    // const start = this.emitSuppressChecktypes(sf);
+    // this.writeNodeFrom(sf, start);
+    this.writeNodeFrom(sf, sf.getFullStart());
   }
 
   /**
